@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=41", "setuptools-git-versioning<2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cellarium-workflows"
+authors = [
+    { name = "Cellarium workflows", email = "cas-support@broadinstitute.org" }
+]
+description = "Cellarium workflows"
+requires-python = ">=3.7"
+license = { file = "LICENSE" }
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+dynamic = ["dependencies", "optional-dependencies", "version", "readme"]
+
+[tool.setuptools.packages.find]
+include = ["cellarium.workflows"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements/base.txt"] }
+optional-dependencies = { docs = { file = ["requirements/docs.txt"] }, test = { file = ["requirements/test.txt"] }, vis = { file = ["requirements/vis.txt"] } }
+readme = { file = ["README.md"], content-type = "text/markdown" }
+
+[project.urls]
+"Homepage" = "https://cellarium.ai"
+"Source Code" = "https://github.com/cellarium-ai/cellarium-workflows"
+"Bug Tracker" = "https://github.com/cellarium-ai/cellarium-workflows/issues"
+"Discussion Forum" = "https://github.com/cellarium-ai/cellarium-workflows/discussions"
+
+[tool.setuptools-git-versioning]
+enabled = true
+
+[tool.black]
+line-length = 120
