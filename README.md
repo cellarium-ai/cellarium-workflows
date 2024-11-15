@@ -6,10 +6,13 @@ This package contains a command line tool to submit cellarium-ml pipelines to th
 
 * [Install gcloud CLI](https://cloud.google.com/sdk/docs/install)
 * [Authenticate gcloud CLI util](https://cloud.google.com/docs/authentication/gcloud)
-* Set up conda environment for pipeline submissions and install project requirements:
+* Set up [conda environment](https://docs.anaconda.com/miniconda/#quick-command-line-install) for pipeline submissions and install this package. Run the following commands:
 ```bash
-$  conda create -n vertex python=3.10
-$  pip install .
+  (base) $  git clone https://github.com/cellarium-ai/cellarium-workflows.git
+  (base) $  cd cellarium-workflows
+  (base) $  conda create -n vertex python=3.10
+  (base) $  conda activate vertex
+(vertex) $  pip install .
 ```
 
 ## Example
@@ -18,8 +21,8 @@ This is a fully working example that will run a smoke test of `cellarium-ml onep
 
 Go to example dir
 ```bash
-$  cd cellarium/workflows/example
-$  ./onepass_train_smoketest.sh
+(vertex) $  cd cellarium/workflows/example
+(vertex) $  ./onepass_train_smoketest.sh
 ```
 
 The bash script copies a local YAML file to the cloud and then runs the command line tool to submit a pipeline. See the contents of `cellarium/workflows/example/onepass_train_smoketest.sh` for details.
@@ -35,10 +38,10 @@ No changes to the code in this repo are necessary. Simply run the appropriate co
 3. Run the following from the command line to submit a pipeline:
 
 ```bash
-$  python cellarium/workflows/submit_single_component.py \
-        --tool onepass_mean_var_std \
-        --subcommand fit \
-        --config gs://bucket/path/to/onepass_config.yaml
+(vertex) $  python cellarium/workflows/submit_single_component.py \
+                --tool onepass_mean_var_std \
+                --subcommand fit \
+                --config gs://bucket/path/to/onepass_config.yaml
 ```
 
 That's it!
@@ -48,19 +51,19 @@ That's it!
 You might want to specify a few more optional inputs, for example:
 
 ```bash
-$  python cellarium/workflows/submit_single_component.py \
-        --tool scvi \
-        --subcommand fit \
-        --config gs://bucket/path/to/scvi_config.yaml \
-        --accelerator-type NVIDIA_TESLA_T4 \
-        --accelerator-count 2 \
-        --git-sha ffa12699f0ae9951454f77cd3151961a0693f365
+(vertex) $  python cellarium/workflows/submit_single_component.py \
+                --tool scvi \
+                --subcommand fit \
+                --config gs://bucket/path/to/scvi_config.yaml \
+                --accelerator-type NVIDIA_TESLA_T4 \
+                --accelerator-count 2 \
+                --git-sha ffa12699f0ae9951454f77cd3151961a0693f365
 ```
 
 Run this to see more information about optional inputs:
 
 ```bash
-$  python cellarium/workflows/submit_single_component.py --help
+(vertex) $  python cellarium/workflows/submit_single_component.py --help
 ```
 
 ### Sequential pipeline consisting of several components

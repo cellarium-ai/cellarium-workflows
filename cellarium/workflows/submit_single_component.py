@@ -162,7 +162,10 @@ def submit_single_component_pipeline(
     display_name = f"{tool}_{subcommand}"
     if pipeline_name == "":
         user = get_current_google_user()
-        pipeline_name = f"{user}_{display_name}"
+        if user is not None:
+            pipeline_name = f"{user}_{display_name}"
+        else:
+            pipeline_name = display_name
     if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
         git_sha = base_image.split(":")[-1]
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
