@@ -157,17 +157,6 @@ def submit_single_component_pipeline(
 ):
     """
     Submit a single component cellarium-ml pipeline to Vertex AI Pipelines.
-
-    Example:
-        python cellarium/workflows/submit_single_component.py \
-            --tool onepass_mean_var_std \
-            --subcommand fit \
-            --config gs://cellarium-human-primary-data/curriculum/human_all_primary_20241108/configs/20241114_onepass_train_config_test.yaml \
-            --machine-type n1-standard-4 \
-            --accelerator-type NVIDIA_TESLA_T4 \
-            --accelerator-count 1 \
-            --git-sha ffa12699f0ae9951454f77cd3151961a0693f365 \
-            --base-image us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch
     """
     # input validation and defaults
     display_name = f"{tool}_{subcommand}"

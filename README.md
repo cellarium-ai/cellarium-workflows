@@ -1,21 +1,72 @@
-# Cellarium Workflows Example
-This code contains helper functions and example to run scripts in Vertex AI platform (powered by Kubeflow)
+# Cellarium Workflows
 
-## Quick start
+This package contains a command line tool to submit cellarium-ml pipelines to the Vertex AI platform (powered by Kubeflow).
+
+## Installation
+
 * [Install gcloud CLI](https://cloud.google.com/sdk/docs/install)
 * [Authenticate gcloud CLI util](https://cloud.google.com/docs/authentication/gcloud)
-* Install project requirements like:
+* Set up conda environment for pipeline submissions and install project requirements:
 ```bash
-$ pip isntall -r requirements/base.txt
+$  conda create -n vertex python=3.10
+$  pip install .
 ```
 
 ## Example
+
+This is a fully working example that will run a smoke test of `cellarium-ml onepass_mean_var_std fit -c cellarium/workflows/example/onepass_train_smoketest_config.yaml` on Vertex AI Pipelines.
+
 Go to example dir
 ```bash
-$ cd cellarium/workflows/example
+$  cd cellarium/workflows/example
+$  ./onepass_train_smoketest.sh
 ```
-Submit an example pipeline:
+
+The bash script copies a local YAML file to the cloud and then runs the command line tool to submit a pipeline. See the contents of `cellarium/workflows/example/onepass_train_smoketest.sh` for details.
+
+## Quick start
+
+No changes to the code in this repo are necessary. Simply run the appropriate command line tool with the appropriate input arguments.
+
+### Pipeline consisting of one component
+
+1. Create a YAML config file for the `cellarium-ml` tool you wish to run.
+2. Copy the YAML config file to a google bucket like `gs://bucket/path/to/config.yaml`
+3. Run the following from the command line to submit a pipeline:
 
 ```bash
-$  python submit_example_pipeline.py --project_id dsp-cell-annotation-service --location us-central1 --display_name test --component_1_config gs://test-bucket/test-config-1.yaml --component_2_config gs://test-bucket/test-config-2.yaml 
+$  python cellarium/workflows/submit_single_component.py \
+        --tool onepass_mean_var_std \
+        --subcommand fit \
+        --config gs://bucket/path/to/onepass_config.yaml
 ```
+
+That's it!
+
+#### Additional input arguments
+
+You might want to specify a few more optional inputs, for example:
+
+```bash
+$  python cellarium/workflows/submit_single_component.py \
+        --tool scvi \
+        --subcommand fit \
+        --config gs://bucket/path/to/scvi_config.yaml \
+        --accelerator-type NVIDIA_TESLA_T4 \
+        --accelerator-count 2 \
+        --git-sha ffa12699f0ae9951454f77cd3151961a0693f365
+```
+
+Run this to see more information about optional inputs:
+
+```bash
+$  python cellarium/workflows/submit_single_component.py --help
+```
+
+### Sequential pipeline consisting of several components
+
+`NotImplemented`
+
+## Tracking jobs in Vertex AI
+
+When using `python cellarium/workflows/submit_single_component.py` to submit a pipeline, a URL will be printed to stdout where you can track the progress of your pipeline using Vertex AI's web UI.
