@@ -19,7 +19,8 @@ This package contains a command line tool to submit cellarium-ml pipelines to th
 
 This is a fully working example that will run a smoke test of `cellarium-ml onepass_mean_var_std fit -c cellarium/workflows/example/onepass_train_smoketest_config.yaml` on Vertex AI Pipelines.
 
-Go to example dir
+Go to the example directory and run the script:
+
 ```bash
 (vertex) $  cd cellarium/workflows/example
 (vertex) $  ./onepass_train_smoketest.sh
@@ -68,8 +69,50 @@ Run this to see more information about optional inputs:
 
 ### Sequential pipeline consisting of several components
 
-`NotImplemented`
+1. Decide which `cellarium-ml` tools will be run in which order.
+2. Create YAML config files for each `cellarium-ml` tool you wish to run.
+3. Copy the YAML config files to a google bucket like `gs://bucket/path/to/config1.yaml`, `gs://bucket/path/to/config2.yaml`, etc.
+4. Create a pipeline YAML config file (this "pipeline config" file is something different than a `cellarium-ml` config file). This can be a local file, and does not need to be in a google bucket. Here is an example pipeline YAML config file that runs `onepass_mean_var_std`, `incremental_pca`, and `logisitc_regression` in that order:
+
+```yaml
+example_pipeline_name:
+  - tool: onepass_mean_var_std
+    subcommand: fit
+    config: gs://bucket/path/to/onepass_train_config.yaml
+    machine_type: n1-standard-4
+    accelerator_count: 0
+  - tool: incremental_pca
+    subcommand: fit
+    config: gs://bucket/path/to/incremental_pca_train_config.yaml
+    machine_type: n1-standard-16
+    accelerator_type: nvidia-t4
+    accelerator_count: 4
+  - tool: logisitc_regression
+    subcommand: fit
+    config: gs://bucket/path/to/logistic_regression_train_config.yaml
+    machine_type: n1-standard-16
+    accelerator_type: nvidia-t4
+    accelerator_count: 4
+```
+
+5. Run the following from the command line to submit the pipeline (the example `pipeline_config.yaml` in this repository just runs `onepass_mean_var_std` twice):
+
+```bash
+(vertex) $  python cellarium/workflows/submit_pipeline.py \
+                --pipeline-config cellarium/workflows/example/pipeline_config.yaml
+```
+
+NOTE: It is also possible to run a single component pipeline using a pipeline config file, rather than using `python submit_single_component.py` as above. Simply specify a pipeline YAML config with a single element list, like this:
+
+```yaml
+my_single_component_pipeline:
+  - tool: onepass_mean_var_std
+    subcommand: fit
+    config: gs://bucket/path/to/onepass_train_config.yaml
+    machine_type: n1-standard-4
+    accelerator_count: 0
+```
 
 ## Tracking jobs in Vertex AI
 
-When using `python cellarium/workflows/submit_single_component.py` to submit a pipeline, a URL will be printed to stdout where you can track the progress of your pipeline using Vertex AI's web UI.
+When a pipeline has been submitted using one of the above options, a URL will be printed to stdout where you can track the progress of your pipeline using Vertex AI's web UI.

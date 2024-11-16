@@ -2,6 +2,7 @@ import ast
 import requests
 import tempfile
 import time
+import yaml
 
 import click
 from google.cloud import aiplatform
@@ -76,22 +77,42 @@ def get_allowed_cli_tool_names(url: str) -> list[str] | None:
         return None
 
 
+def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
+    with open(config) as f:
+        config_contents = yaml.safe_load(f)
+    top_level_keys = list(config_contents.keys())
+    assert (
+        len(top_level_keys) == 1
+    ), "Pipeline YAML config error: The top level of the config file must be the display_name of the pipeline. Only one top level key is allowed."
+    display_name = list(config_contents.keys())[0]
+    component_definitions = config_contents[display_name]
+    assert isinstance(
+        component_definitions, list
+    ), "Pipeline YAML config error: The value of the top level key must be a list of component definition dictionaries."
+    for item in component_definitions:
+        assert isinstance(
+            item, dict
+        ), "Pipeline YAML config error: Each component definition in the list must be a dictionary."
+        assert (
+            "tool" in item
+        ), "Pipeline YAML config error: Each component definition must have a 'tool' key."
+        assert (
+            "subcommand" in item
+        ), "Pipeline YAML config error: Each component definition must have a 'subcommand' key."
+        assert (
+            item["subcommand"] in ["fit", "predict"]
+        ), "Pipeline YAML config error: The 'subcommand' key's value must be either 'fit' or 'predict'."
+        assert (
+            "config" in item
+        ), "Pipeline YAML config error: Each component definition must have a 'config' key."
+    return display_name, component_definitions
+
+
 @click.command()
 @click.option(
-    "--tool",
+    "--pipeline-config",
     required=True,
-    help="Tool to run, e.g. 'onepass_mean_var_std'.",
-)
-@click.option(
-    "--subcommand",
-    required=True,
-    type=click.Choice(["fit", "predict"]),
-    help="Subcommand to run, either 'fit' or 'predict'.",
-)
-@click.option(
-    "--config",
-    required=True,
-    help="GCS path to the training config YAML file.",
+    help="Local path to the pipeline config YAML file.",
 )
 @click.option(
     "--project",
@@ -131,50 +152,50 @@ def get_allowed_cli_tool_names(url: str) -> list[str] | None:
     help="Number of GPUs.",
 )
 @click.option(
-    "--git-sha",
-    default="",
-    type=str,
-    help="Cellarium-ML git SHA to install (if provided).",
-)
-@click.option(
     "--base-image",
     default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
     help="Base image for the component.",
 )
-def submit_single_component_pipeline(
+def submit_sequential_pipeline(
     project: str,
     location: str,
-    config: str,
-    tool: str,
-    subcommand: str,
+    pipeline_config: str,
     pipeline_name: str,
     machine_type: str,
     replica_count: int,
     accelerator_type: str,
     accelerator_count: int,
-    git_sha: str,
     base_image: str,
 ):
     """
-    Submit a single component cellarium-ml pipeline to Vertex AI Pipelines.
+    Submit a pipeline of sequential cellarium-ml tools to Vertex AI Pipelines.
     """
+    # parse pipeline config
+    display_name, component_definitions = parse_pipeline_yaml(pipeline_config)
+
     # input validation and defaults
-    display_name = f"{tool}_{subcommand}"
     if pipeline_name == "":
         user = get_current_google_user()
         if user is not None:
             pipeline_name = f"{user}_{display_name}"
         else:
             pipeline_name = display_name
-    if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
-        git_sha = base_image.split(":")[-1]
-    url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
-    cli_tool_names = get_allowed_cli_tool_names(url)
-    if cli_tool_names is not None:
-        if tool not in cli_tool_names:
+
+    for t, sha in [(c["tool"], c.get("git_sha", "")) for c in component_definitions]:
+        if (sha == "") and (len(base_image.split(":")[-1]) > 0):
+            sha = base_image.split(":")[-1]
+        url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{sha}/cellarium/ml/cli.py"
+        cli_tool_names = get_allowed_cli_tool_names(url)
+        if cli_tool_names is not None:
+            if t not in cli_tool_names:
+                raise ValueError(
+                    f"Tool '{t}' not found in allowed CLI tools at {url}.\n"
+                    f"Allowed tool names:\n{cli_tool_names}"
+                )
+    for subcommand in [c["subcommand"] for c in component_definitions]:
+        if subcommand not in ["fit", "predict"]:
             raise ValueError(
-                f"Tool '{tool}' not found in allowed CLI tools at {url}.\n"
-                f"Allowed tool names:\n{cli_tool_names}"
+                f"Subcommand '{subcommand}' not recognized. Must be either 'fit' or 'predict'."
             )
     if (
         (accelerator_count is None)
@@ -210,25 +231,38 @@ def submit_single_component_pipeline(
 
         cellarium_ml_cli(args=[tool, subcommand, "--config", config])
 
-    custom_training_job = create_custom_training_job_from_component(
-        train_op,
-        display_name=display_name,
-        replica_count=replica_count,
-        machine_type=machine_type,
-        accelerator_type=accelerator_type,
-        accelerator_count=accelerator_count,
-    )
+    # create component definitions
+    custom_training_jobs = [
+        create_custom_training_job_from_component(
+            train_op,
+            display_name=f"{i}__{c['tool']}_{c['subcommand']}",
+            replica_count=replica_count,
+            machine_type=machine_type,
+            accelerator_type=accelerator_type,
+            accelerator_count=accelerator_count,
+        )
+        for i, c in enumerate(component_definitions)
+    ]
 
-    @dsl.pipeline(name=pipeline_name, description=f"cellarium-ml {tool} {subcommand}")
+    @dsl.pipeline(name=pipeline_name, description="cellarium-ml sequence")
     def pipeline():
-        custom_training_job(
-            project=project,
-            location=location,
-            tool=tool,
-            subcommand=subcommand,
-            config=config,
-            git_sha=git_sha,
-        ).set_display_name(display_name)
+        tasks = []
+        for i, (component_definition, custom_training_job) in enumerate(
+            zip(component_definitions, custom_training_jobs)
+        ):
+            task = custom_training_job(
+                project=project,
+                location=location,
+                tool=component_definition["tool"],
+                subcommand=component_definition["subcommand"],
+                config=component_definition["config"],
+                git_sha=component_definition.get("git_sha", ""),
+            ).set_display_name(
+                f"{i}__{component_definition['tool']}_{component_definition['subcommand']}"
+            )
+            if tasks:  # Set dependency if there's a previous task
+                task.after(tasks[-1])
+            tasks.append(task)
 
     with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
         compiler.Compiler().compile(pipeline_func=pipeline, package_path=f.name)
@@ -242,4 +276,4 @@ def submit_single_component_pipeline(
 
 
 if __name__ == "__main__":
-    submit_single_component_pipeline()
+    submit_sequential_pipeline()
