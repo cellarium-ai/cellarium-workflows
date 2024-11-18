@@ -72,7 +72,7 @@ Run this to see more information about optional inputs:
 1. Decide which `cellarium-ml` tools will be run in which order.
 2. Create YAML config files for each `cellarium-ml` tool you wish to run.
 3. Copy the YAML config files to a google bucket like `gs://bucket/path/to/config1.yaml`, `gs://bucket/path/to/config2.yaml`, etc.
-4. Create a pipeline YAML config file (this "pipeline config" file is something different than a `cellarium-ml` config file). This can be a local file, and does not need to be in a google bucket. Here is an example pipeline YAML config file that runs `onepass_mean_var_std`, `incremental_pca`, and `logisitc_regression` in that order:
+4. Create a pipeline YAML config file (this "pipeline config" file is something different than a `cellarium-ml` config file). This can be a local file, and does not need to be in a google bucket. Here is an example pipeline YAML config file that runs `onepass_mean_var_std`, `incremental_pca`, and `logistic_regression` in that order:
 
 ```yaml
 example_pipeline_name:
@@ -87,7 +87,7 @@ example_pipeline_name:
     machine_type: n1-standard-16
     accelerator_type: nvidia-t4
     accelerator_count: 4
-  - tool: logisitc_regression
+  - tool: logistic_regression
     subcommand: fit
     config: gs://bucket/path/to/logistic_regression_train_config.yaml
     machine_type: n1-standard-16
