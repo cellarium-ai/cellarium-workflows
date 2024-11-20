@@ -113,6 +113,59 @@ my_single_component_pipeline:
     accelerator_count: 0
 ```
 
-## Tracking jobs in Vertex AI
+## Vertex AI Hints
+
+### Machine configuration
+
+Sometimes it is not straightforward to figure out the correct capitalization and the use of underscores versus dashes, and these details seem to be critical (and Vertex AI does not give a helpful error message). Here are some working example combinations.
+
+You can read more about allowed machine combinations in [the google documentation](https://cloud.google.com/compute/docs/gpus).
+
+#### L4 GPU
+
+The L4 requires the use of a "G2" series machine.
+
+```yaml
+machine_type: g2-standard-16
+accelerator_type: NVIDIA_L4
+```
+
+#### T4 GPU
+
+```yaml
+machine_type: n1-standard-16
+accelerator_type: NVIDIA_TESLA_T4
+```
+
+### Output files
+
+Output files can be handled in different ways by Kubeflow. By far the easiest thing to do when using `cellarium-ml` is to specify in the YAML config file that the trainer's `default_root_dir` should be `/gcs/bucket/path`, which (assuming `gcsfs` is installed, and `cellarium-workflows` automatically ensures that it does get installed) auto-magically copies files written to local `/gcs/bucket/path` to `gs://bucket/path`. This happens in real time as the pipeline is being run. Outputs can be accessed by navigating to `gs://bucket/path`. Example config snippet:
+
+```yaml
+trainer:
+  ...
+  default_root_dir: /gcs/cellarium-human-primary-data/curriculum/human_all_primary_20241108/trained_models/20241120_my_model
+```
+
+The code in `cellarium-workflows` does assume that outputs will be handled as above, and it provides no other way to obtain outputs. 
+
+### Tensorboard
+
+If you specify the `default_root_dir` as `/gcs/bucket/path` in your `cellarium-ml` YAML config file, and assuming the model you are running uses a pytorch-lightning TensorBoard logger (which it does by default), then your logs will be copied out to `gs://bucket/path/lightning_logs/version_<NUM>/events.out.tfevents.<SOMETHING>`. This happens in real time as the pipeline is running. All you need to do is point a tensorboard instance at those logs. There are two (probably more) straightforward ways to do this:
+
+1. Copy the file to your local machine and run tensorboard locally.
+
+    ```bash
+    $ gsutil cp gs://bucket/path/lightning_logs/version_<NUM>/events.out.tfevents.* .
+    $ tensorboard --logdir .
+    ```
+
+    Drawback: you need to re-copy the file if you want see things update.
+
+    Advantage: no need to install the tools needed for option 2.
+
+2. Mount the google bucket (using something like `gcsfuse` or `rclone`) and point tensorboard at that local mounted directory.
+
+### Tracking jobs
 
 When a pipeline has been submitted using one of the above options, a URL will be printed to stdout where you can track the progress of your pipeline using Vertex AI's web UI.
