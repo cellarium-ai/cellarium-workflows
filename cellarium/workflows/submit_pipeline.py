@@ -130,28 +130,6 @@ def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
     help="Pipeline name, defaults to f'{user}_{tool}_{subcommand}'.",
 )
 @click.option(
-    "--machine-type",
-    default="n1-standard-4",
-    help="Machine type for the training job, e.g. 'n1-standard-16'.",
-)
-@click.option(
-    "--replica-count",
-    default=1,
-    type=int,
-    help="Number of replicas (nodes) for training.",
-)
-@click.option(
-    "--accelerator-type",
-    default="NVIDIA_TESLA_T4",
-    help="Type of accelerator (gpu), e.g. 'NVIDIA_TESLA_T4'.",
-)
-@click.option(
-    "--accelerator-count",
-    default=1,
-    type=int,
-    help="Number of GPUs.",
-)
-@click.option(
     "--base-image",
     default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
     help="Base image for the component.",
@@ -161,14 +139,31 @@ def submit_sequential_pipeline(
     location: str,
     pipeline_config: str,
     pipeline_name: str,
-    machine_type: str,
-    replica_count: int,
-    accelerator_type: str,
-    accelerator_count: int,
     base_image: str,
 ):
     """
     Submit a pipeline of sequential cellarium-ml tools to Vertex AI Pipelines.
+
+    Example contents of pipeline-config:
+
+    .. code-block:: yaml
+
+        scvi_vanilla_with_full_latent_batch:
+
+            - tool: scvi
+
+                subcommand: fit
+
+                config: gs://cellarium-human-primary-data/curriculum/human_all_primary_20241108/configs/20241120_scvi_train_config.yaml
+
+                machine_type: n1-standard-16
+
+                accelerator_type: NVIDIA_TESLA_T4
+
+                accelerator_count: 4
+
+                git_sha: c14705370d2a7a805286fa3dd0e4795c10e6cefd
+
     """
     # parse pipeline config
     display_name, component_definitions = parse_pipeline_yaml(pipeline_config)
@@ -197,14 +192,17 @@ def submit_sequential_pipeline(
             raise ValueError(
                 f"Subcommand '{subcommand}' not recognized. Must be either 'fit' or 'predict'."
             )
-    if (
-        (accelerator_count is None)
-        or (accelerator_type is None)
-        or (accelerator_count == 0)
-    ):
-        # vertex ai wants None for both inputs if one of them is None
-        accelerator_count = None
-        accelerator_type = None
+    for i, c in enumerate(component_definitions):
+        accelerator_type = c.get("accelerator_type", None)
+        accelerator_count = c.get("accelerator_count", None)
+        if (
+            (accelerator_count is None)
+            or (accelerator_type is None)
+            or (accelerator_count == 0)
+        ):
+            # vertex ai wants None for both inputs if one of them is None
+            component_definitions[i]["accelerator_count"] = None
+            component_definitions[i]["accelerator_type"] = None
 
     aiplatform.init(project=project, location=location)
 
@@ -220,7 +218,7 @@ def submit_sequential_pipeline(
 
         # re-install cellarium-ml if a git sha is provided
         if git_sha != "":
-            cmd = f"yes | pip install -U git+https://github.com/cellarium-ai/cellarium-ml.git@{git_sha}"
+            cmd = f"pip install -U git+https://github.com/cellarium-ai/cellarium-ml.git@{git_sha}"
             os.system(cmd)
 
         # handle multi-node training
@@ -236,10 +234,10 @@ def submit_sequential_pipeline(
         create_custom_training_job_from_component(
             train_op,
             display_name=f"{i}__{c['tool']}_{c['subcommand']}",
-            replica_count=replica_count,
-            machine_type=machine_type,
-            accelerator_type=accelerator_type,
-            accelerator_count=accelerator_count,
+            replica_count=c.get("replica_count", 1),
+            machine_type=c.get("machine_type", None),
+            accelerator_type=c.get("accelerator_type", None),
+            accelerator_count=c.get("accelerator_count", None),
         )
         for i, c in enumerate(component_definitions)
     ]
