@@ -191,6 +191,7 @@ def submit_single_component_pipeline(
         packages_to_install=[
             "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
             "tensorboard",  # necessary to write tensorboard logs
+            "psutil",  # necessary to log CPU stats
         ],
         base_image=base_image,
     )
