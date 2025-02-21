@@ -222,11 +222,23 @@ def submit_sequential_pipeline(
             cmd = f"pip install -U git+https://github.com/cellarium-ai/cellarium-ml.git@{git_sha}"
             os.system(cmd)
 
+        # set env variables to allow pytorch to use all CPUs
+        import psutil
+        num_physical_cores = psutil.cpu_count(logical=False)
+        os.environ["OMP_NUM_THREADS"] = str(num_physical_cores)
+        os.environ["MKL_NUM_THREADS"] = str(num_physical_cores)
+        os.environ["OPENBLAS_NUM_THREADS"] = str(num_physical_cores)  # Only if using OpenBLAS
+        os.environ["NUMEXPR_NUM_THREADS"] = str(num_physical_cores)  # Not critical for PyTorch
+
         # handle multi-node training
         if os.environ.get("RANK") is not None:
             os.environ["NODE_RANK"] = os.environ.get("RANK")
 
         from cellarium.ml.cli import main as cellarium_ml_cli
+
+        # set number of threads for torch
+        import torch
+        torch.set_num_threads(num_physical_cores)
 
         cellarium_ml_cli(args=[tool, subcommand, "--config", config])
 
