@@ -1,7 +1,4 @@
-import ast
-import requests
 import tempfile
-import time
 import yaml
 
 import click
@@ -9,72 +6,14 @@ from google.cloud import aiplatform
 from google_cloud_pipeline_components.v1.custom_job import (
     create_custom_training_job_from_component,
 )
-from google.auth import default
-from google.auth.transport.requests import Request
-import jwt
 from kfp import compiler, dsl
 
-
-def get_current_google_user() -> str | None:
-    try:
-        credentials, _ = default()
-        credentials.refresh(Request())
-        id_token = credentials.id_token
-        decoded_token = jwt.decode(id_token, options={"verify_signature": False})
-        return decoded_token.get("email").split("@")[0]
-    except Exception as e:
-        print(
-            "NOTE: unable to prepend google user name to pipeline name. "
-            f"This is purely cosmetic. Continuing. Error was:\n{e}"
-        )
-        return None
-
-
-def fetch_url_with_retries(url, retries=3, delay=1):
-    for attempt in range(retries):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise e
-
-
-def get_allowed_cli_tool_names(url: str) -> list[str] | None:
-    """
-    Parse python code at a given URL to obtain a list of allowed cellarium-ml CLI tool names.
-
-    Args:
-        url: URL to fetch the python code from.
-
-    Returns:
-        List of allowed CLI tool names, or None if the URL could not be fetched.
-    """
-    try:
-        response = fetch_url_with_retries(url)
-        content = response.text
-        module = ast.parse(content)
-        cli_tool_names = [
-            node.name
-            for node in module.body
-            if isinstance(node, ast.FunctionDef)
-            and any(
-                isinstance(decorator, ast.Name) and decorator.id == "register_model"
-                for decorator in node.decorator_list
-            )
-        ]
-        return cli_tool_names
-    except requests.exceptions.RequestException as e:
-        print(
-            f"WARNING:\nAttempted to fetch URL {url} to look up allowed CLI tool names.\n"
-            "This URL was inferred from the --base-image tag and assumes the tag matches a git SHA for cellarium-ml.\n"
-            f"Request returned:\n{e}\n"
-            "NOTE: The input --tool cannot be validated. Double check tool name!\n"
-        )
-        return None
+from shared_components import (
+    get_current_google_user,
+    get_allowed_cli_tool_names,
+    create_train_op_function,
+    get_train_op_code,
+)
 
 
 def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
@@ -130,6 +69,12 @@ def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
     help="Pipeline name, defaults to f'{user}_{tool}_{subcommand}'.",
 )
 @click.option(
+    "--copy-data-to-local-disk",
+    default=True,
+    type=bool,
+    help="True copies GCS data to local disk fully (once) before training. False is ephemeral.",
+)
+@click.option(
     "--base-image",
     default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
     help="Base image for the component.",
@@ -139,6 +84,7 @@ def submit_sequential_pipeline(
     location: str,
     pipeline_config: str,
     pipeline_name: str,
+    copy_data_to_local_disk: bool,
     base_image: str,
 ):
     """
@@ -211,36 +157,12 @@ def submit_sequential_pipeline(
             "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
             "tensorboard",  # necessary to write tensorboard logs
             "psutil",  # necessary to log CPU stats
+            "ruamel.yaml",  # necessary to handle yaml files with !FileLoader
         ],
         base_image=base_image,
     )
     def train_op(tool: str, subcommand: str, config: str, git_sha: str = "") -> None:
-        import os
-
-        # re-install cellarium-ml if a git sha is provided
-        if git_sha != "":
-            cmd = f"pip install -U git+https://github.com/cellarium-ai/cellarium-ml.git@{git_sha}"
-            os.system(cmd)
-
-        # set env variables to allow pytorch to use all CPUs
-        import psutil
-        num_physical_cores = psutil.cpu_count(logical=False)
-        os.environ["OMP_NUM_THREADS"] = str(num_physical_cores)
-        os.environ["MKL_NUM_THREADS"] = str(num_physical_cores)
-        os.environ["OPENBLAS_NUM_THREADS"] = str(num_physical_cores)  # Only if using OpenBLAS
-        os.environ["NUMEXPR_NUM_THREADS"] = str(num_physical_cores)  # Not critical for PyTorch
-
-        # handle multi-node training
-        if os.environ.get("RANK") is not None:
-            os.environ["NODE_RANK"] = os.environ.get("RANK")
-
-        from cellarium.ml.cli import main as cellarium_ml_cli
-
-        # set number of threads for torch
-        import torch
-        torch.set_num_threads(num_physical_cores)
-
-        cellarium_ml_cli(args=[tool, subcommand, "--config", config])
+        exec(get_train_op_code(copy_data_to_local_disk))
 
     # create component definitions
     custom_training_jobs = [

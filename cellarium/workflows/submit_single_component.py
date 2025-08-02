@@ -1,79 +1,18 @@
-import ast
-import requests
 import tempfile
-import time
 
 import click
 from google.cloud import aiplatform
 from google_cloud_pipeline_components.v1.custom_job import (
     create_custom_training_job_from_component,
 )
-from google.auth import default
-from google.auth.transport.requests import Request
-import jwt
 from kfp import compiler, dsl
 
-
-def get_current_google_user() -> str | None:
-    try:
-        credentials, _ = default()
-        credentials.refresh(Request())
-        id_token = credentials.id_token
-        decoded_token = jwt.decode(id_token, options={"verify_signature": False})
-        return decoded_token.get("email").split("@")[0]
-    except Exception as e:
-        print(
-            "NOTE: unable to prepend google user name to pipeline name. "
-            f"This is purely cosmetic. Continuing. Error was:\n{e}"
-        )
-        return None
-
-
-def fetch_url_with_retries(url, retries=3, delay=1):
-    for attempt in range(retries):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise e
-
-
-def get_allowed_cli_tool_names(url: str) -> list[str] | None:
-    """
-    Parse python code at a given URL to obtain a list of allowed cellarium-ml CLI tool names.
-
-    Args:
-        url: URL to fetch the python code from.
-
-    Returns:
-        List of allowed CLI tool names, or None if the URL could not be fetched.
-    """
-    try:
-        response = fetch_url_with_retries(url)
-        content = response.text
-        module = ast.parse(content)
-        cli_tool_names = [
-            node.name
-            for node in module.body
-            if isinstance(node, ast.FunctionDef)
-            and any(
-                isinstance(decorator, ast.Name) and decorator.id == "register_model"
-                for decorator in node.decorator_list
-            )
-        ]
-        return cli_tool_names
-    except requests.exceptions.RequestException as e:
-        print(
-            f"WARNING:\nAttempted to fetch URL {url} to look up allowed CLI tool names.\n"
-            "This URL was inferred from the --base-image tag and assumes the tag matches a git SHA for cellarium-ml.\n"
-            f"Request returned:\n{e}\n"
-            "NOTE: The input --tool cannot be validated. Double check tool name!\n"
-        )
-        return None
+from shared_components import (
+    get_current_google_user,
+    get_allowed_cli_tool_names,
+    create_train_op_function,
+    get_train_op_code,
+)
 
 
 @click.command()
@@ -194,6 +133,9 @@ def submit_single_component_pipeline(
 
     aiplatform.init(project=project, location=location)
 
+    # Create the base train_op function
+    base_train_op = create_train_op_function(copy_data_to_local_disk=copy_data_to_local_disk)
+
     @dsl.component(
         packages_to_install=[
             "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
@@ -210,109 +152,7 @@ def submit_single_component_pipeline(
         git_sha: str,
         copy_data_to_local_disk: bool,
     ) -> None:
-        import os
-
-        # re-install cellarium-ml if a git sha is provided
-        if git_sha != "":
-            cmd = f"pip install -U git+https://github.com/cellarium-ai/cellarium-ml.git@{git_sha}"
-            os.system(cmd)
-
-        # optionally copy data from GCS to local disk
-        if copy_data_to_local_disk:
-            import concurrent.futures
-            import copy
-            import glob
-            import gcsfs
-            from ruamel.yaml import YAML
-
-            # 0. localize the config file
-            fs = gcsfs.GCSFileSystem()
-
-            def download_file(src):
-                dst = os.path.join(os.getcwd(), os.path.basename(src))
-                with fs.open(src, "rb") as fsrc:
-                    with open(dst, "wb") as fdst:
-                        fdst.write(fsrc.read())
-                print(f"Copied {src} to {dst}")
-                return dst
-
-            config_local_path = download_file(config)
-            print(f"Copied {config} to {config_local_path}")
-
-            # 1. find data reference
-            yaml = YAML()
-            yaml.preserve_quotes = True
-
-            with open(config_local_path, "r") as f:
-                config_data = yaml.load(f)
-            try:
-                original_data_reference = config_data["data"]["dadc"]["init_args"]["filenames"]
-            except KeyError:
-                raise RuntimeError(
-                    f"Could not find dataset in {config} when attempting to access data.dadc.init_args.filenames\n\n"
-                    f"{os.system('cat ' + config_local_path)}"
-                )
-
-            # 2. download data to local disk
-            print(f"Copying data from GCS {original_data_reference} to local disk {os.getcwd()}")
-            data_reference = copy.copy(original_data_reference)
-            if isinstance(data_reference, str):
-                # Handle brace expansion
-                if "{" in data_reference and ".." in data_reference:
-                    import re
-                    pattern = re.search(r'\{(\d+)\.\.(\d+)\}', data_reference)
-                    if pattern:
-                        start, end = map(int, pattern.groups())
-                        base_path = data_reference[:pattern.start()]
-                        suffix = data_reference[pattern.end():]
-                        data_reference = [f"{base_path}{i}{suffix}" for i in range(start, end + 1)]
-                    else:
-                        data_reference = [data_reference]
-                else:
-                    data_reference = [data_reference]
-
-            # Download files in parallel using gcsfs.get
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(download_file, src) for src in data_reference]
-                downloaded_files = [future.result() for future in concurrent.futures.as_completed(futures)]
-
-            print("Listing local .h5ad files:")
-            h5ad_files = glob.glob("*.h5ad")
-            print("\n".join(h5ad_files))
-
-            # 3. rewrite the config file to point to the local data
-            if isinstance(original_data_reference, str):
-                local_data_reference = os.path.basename(original_data_reference)
-            else:
-                local_data_reference = [os.path.basename(f) for f in original_data_reference]
-            config_data["data"]["dadc"]["init_args"]["filenames"] = local_data_reference
-            with open(config_local_path, "w") as f:
-                yaml.dump(config_data, f)
-            print(f"Re-writing config file {config_local_path} to point to local data:\n\n")
-            os.system(f"cat {config_local_path}")
-
-            config = config_local_path  # point to new config for the cellarium job
-            print(config)
-
-        # set env variables to allow pytorch to use all CPUs
-        import psutil
-        num_physical_cores = psutil.cpu_count(logical=False)
-        os.environ["OMP_NUM_THREADS"] = str(num_physical_cores)
-        os.environ["MKL_NUM_THREADS"] = str(num_physical_cores)
-        os.environ["OPENBLAS_NUM_THREADS"] = str(num_physical_cores)  # Only if using OpenBLAS
-        os.environ["NUMEXPR_NUM_THREADS"] = str(num_physical_cores)  # Not critical for PyTorch
-
-        # handle multi-node training
-        if os.environ.get("RANK") is not None:
-            os.environ["NODE_RANK"] = os.environ.get("RANK")
-
-        from cellarium.ml.cli import main as cellarium_ml_cli
-
-        # set number of threads for torch
-        import torch
-        torch.set_num_threads(num_physical_cores)
-
-        cellarium_ml_cli(args=[tool, subcommand, "--config", config])
+        exec(get_train_op_code(copy_data_to_local_disk))
 
     custom_training_job = create_custom_training_job_from_component(
         train_op,
