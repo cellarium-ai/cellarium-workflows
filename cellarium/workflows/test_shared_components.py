@@ -63,16 +63,16 @@ def test_train_op_functions():
     # Test get_train_op_code
     code_with_download = get_train_op_code(copy_data_to_local_disk=True)
     assert len(code_with_download) > 0
-    assert "get_git_install_code" in code_with_download
-    assert "get_cellarium_cli_code" in code_with_download
-    assert "get_data_download_code" in code_with_download  # Should contain data download code
+    assert "import os" in code_with_download  # Should contain actual script content
+    assert "cellarium_ml_cli" in code_with_download  # Should contain CLI execution
+    assert "copy_data_to_local_disk" in code_with_download  # Should contain data download check
     print("✓ get_train_op_code works with data download")
     
     code_without_download = get_train_op_code(copy_data_to_local_disk=False)
     assert len(code_without_download) > 0
-    assert "get_git_install_code" in code_without_download
-    assert "get_cellarium_cli_code" in code_without_download
-    assert "get_data_download_code" not in code_without_download  # Should not contain data download code
+    assert "import os" in code_without_download  # Should contain actual script content
+    assert "cellarium_ml_cli" in code_without_download  # Should contain CLI execution
+    assert "copy_data_to_local_disk" not in code_without_download  # Should not contain data download check
     print("✓ get_train_op_code works without data download")
     
     print("Train_op function tests passed!")

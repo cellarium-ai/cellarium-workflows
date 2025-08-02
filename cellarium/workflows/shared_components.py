@@ -51,24 +51,35 @@ def _get_train_op_text(copy_data_to_local_disk: bool = True) -> str:
         copy_data_to_local_disk: Whether to include data download code
         
     Returns:
-        Complete train_op implementation as a string
+        Complete train_op implementation as a string with inlined script content
     """
-    data_download_section = '''
-    # optionally copy data from GCS to local disk
-    if copy_data_to_local_disk:
-        exec(get_data_download_code())
-''' if copy_data_to_local_disk else ''
+    # Get the actual script content and inline it
+    git_install_code = get_git_install_code()
+    pytorch_setup_code = get_pytorch_setup_code()
+    cellarium_cli_code = get_cellarium_cli_code()
     
-    return f'''
-# re-install cellarium-ml if a git sha is provided
-exec(get_git_install_code())
-{data_download_section}
-# set up PyTorch environment
-exec(get_pytorch_setup_code())
+    if copy_data_to_local_disk:
+        data_download_code = get_data_download_code()
+        data_download_section = f'''
+# optionally copy data from GCS to local disk
+if copy_data_to_local_disk:
+{_indent_code(data_download_code, 4)}
+'''
+    else:
+        data_download_section = ''
+    
+    return f'''# re-install cellarium-ml if a git sha is provided
+{git_install_code}
+{data_download_section}# set up PyTorch environment
+{pytorch_setup_code}
 
 # run the cellarium CLI
-exec(get_cellarium_cli_code())
-'''.strip()
+{cellarium_cli_code}'''.strip()
+
+def _indent_code(code: str, spaces: int) -> str:
+    """Indent each line of code by the specified number of spaces."""
+    indent = " " * spaces
+    return "\n".join(indent + line if line.strip() else line for line in code.split("\n"))
 
 def create_train_op_function(copy_data_to_local_disk: bool = True):
     """
@@ -88,8 +99,20 @@ def create_train_op_function(copy_data_to_local_disk: bool = True):
         config: str,
         git_sha: str = "",
     ) -> None:
+        # Create execution context with all necessary variables and functions
+        exec_globals = {
+            'tool': tool,
+            'subcommand': subcommand,
+            'config': config,
+            'git_sha': git_sha,
+            'copy_data_to_local_disk': copy_data_to_local_disk,
+            'get_git_install_code': get_git_install_code,
+            'get_data_download_code': get_data_download_code,
+            'get_pytorch_setup_code': get_pytorch_setup_code,
+            'get_cellarium_cli_code': get_cellarium_cli_code,
+        }
         # Execute the ground-truth train_op implementation
-        exec(train_op_text)
+        exec(train_op_text, exec_globals)
     
     return train_op
 
@@ -104,6 +127,50 @@ def get_train_op_code(copy_data_to_local_disk: bool = True) -> str:
         Complete train_op implementation as a string
     """
     return _get_train_op_text(copy_data_to_local_disk)
+
+def create_vertex_ai_train_op_component(base_image: str = ""):
+    """
+    Creates a dsl.component decorated train_op function for Vertex AI execution.
+    
+    This passes the train_op_code as a parameter so it gets serialized properly.
+    
+    Args:
+        base_image: The base image for the component
+        
+    Returns:
+        A dsl.component decorated function ready for Vertex AI
+    """
+    from kfp import dsl
+    
+    @dsl.component(
+        packages_to_install=[
+            "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
+            "tensorboard",  # necessary to write tensorboard logs
+            "psutil",  # necessary to log CPU stats
+            "ruamel.yaml",  # necessary to handle yaml files with !FileLoader
+        ],
+        base_image=base_image,
+    )
+    def train_op(
+        tool: str,
+        subcommand: str,
+        config: str,
+        train_op_code: str,  # Pass the code as a parameter
+        git_sha: str = "",
+        copy_data_to_local_disk: bool = True,
+    ) -> None:
+        # Create execution context with all necessary variables
+        exec_globals = {
+            'tool': tool,
+            'subcommand': subcommand,
+            'config': config,
+            'git_sha': git_sha,
+            'copy_data_to_local_disk': copy_data_to_local_disk,
+        }
+        # Execute the train_op code with proper context
+        exec(train_op_code, exec_globals)
+    
+    return train_op
 
 # Re-export utility functions for backward compatibility
 def get_current_google_user() -> str | None:

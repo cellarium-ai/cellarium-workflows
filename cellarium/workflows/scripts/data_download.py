@@ -18,8 +18,11 @@ def download_file(src):
     print(f"Copied {src} to {dst}")
     return dst
 
-config_local_path = download_file(config)
-print(f"Copied {config} to {config_local_path}")
+if config.startswith("gs://"):
+    config_local_path = download_file(config)
+    print(f"Copied {config} to {config_local_path}")
+else:
+    config_local_path = config
 
 # 1. find data reference
 yaml = YAML()

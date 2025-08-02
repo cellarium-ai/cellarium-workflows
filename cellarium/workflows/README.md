@@ -1,6 +1,6 @@
 # Cellarium Workflows - Shared Components
 
-This directory contains refactored code for submitting cellarium-ml tasks to Vertex AI Pipelines, with shared components extracted for better maintainability and IDE support.
+This directory contains code for submitting cellarium-ml tasks to Vertex AI Pipelines.
 
 ## Structure
 
@@ -19,33 +19,24 @@ cellarium/workflows/
 └── test_shared_components.py   # Test script for validation
 ```
 
-## Benefits
-
-1. **Full IDE Support**: Individual scripts in `scripts/` get complete syntax highlighting, autocomplete, and type checking
-2. **No Code Duplication**: Shared logic is centralized and reused across all execution modes
-3. **Maintainability**: Each piece of functionality is in its own file
-4. **Testing**: Scripts can be imported and tested individually
-5. **Version Control**: Changes are isolated to specific functionality
-6. **Multiple Execution Modes**: Same code runs locally or on Vertex AI
-
 ## Usage
 
 ### Local Execution (for testing)
 ```bash
-# Run locally for testing and development
-python local_single_component.py --tool scvi --subcommand fit --config /path/to/config.yaml
+# Run locally for testing and development, or interactive runs on a VM
+(cellarium)$ python local_single_component.py --tool scvi --subcommand fit --config /path/to/config.yaml
 ```
 
 ### Vertex AI Single Component
 ```bash
 # Submit a single component to Vertex AI
-python submit_single_component.py --tool scvi --subcommand fit --config gs://path/to/config.yaml
+(vertex)$ python submit_single_component.py --tool scvi --subcommand fit --config gs://path/to/config.yaml
 ```
 
 ### Vertex AI Multi-Component Pipeline
 ```bash
 # Submit a multi-component pipeline to Vertex AI
-python submit_pipeline.py --pipeline-config pipeline_config.yaml
+(vertex)$ python submit_pipeline.py --pipeline-config pipeline_config.yaml
 ```
 
 ## How It Works
@@ -77,24 +68,6 @@ This ground truth is used by:
 - `local_single_component.py` - Uses the function wrapper for direct execution
 
 This ensures zero redundancy - there's exactly one definition of the training logic.
-
-## Key Features
-
-### Brace Expansion Support
-The data download script supports shell-style brace expansion:
-```
-gs://bucket/path/extract_{0..10}.h5ad
-```
-This expands to files `extract_0.h5ad` through `extract_10.h5ad`.
-
-### Parallel Downloads
-Data files are downloaded in parallel using `ThreadPoolExecutor` for improved performance similar to `gsutil -m`.
-
-### Environment Setup
-Automatic PyTorch environment configuration including:
-- CPU thread optimization
-- Multi-node training support
-- Environment variable setup
 
 ### Flexible Execution
 - **Local Development**: Test your workflows locally before submitting to Vertex AI

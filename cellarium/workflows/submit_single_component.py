@@ -11,7 +11,7 @@ from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_train_op_function,
-    get_train_op_code,
+    create_vertex_ai_train_op_component,
 )
 
 
@@ -133,26 +133,12 @@ def submit_single_component_pipeline(
 
     aiplatform.init(project=project, location=location)
 
-    # Create the base train_op function
-    base_train_op = create_train_op_function(copy_data_to_local_disk=copy_data_to_local_disk)
-
-    @dsl.component(
-        packages_to_install=[
-            "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
-            "tensorboard",  # necessary to write tensorboard logs
-            "psutil",  # necessary to log CPU stats
-            "ruamel.yaml",  # necessary to handle yaml files with !FileLoader
-        ],
-        base_image=base_image,
-    )
-    def train_op(
-        tool: str,
-        subcommand: str,
-        config: str,
-        git_sha: str,
-        copy_data_to_local_disk: bool,
-    ) -> None:
-        exec(get_train_op_code(copy_data_to_local_disk))
+    # Create the train_op component using our dynamic creator
+    train_op = create_vertex_ai_train_op_component(base_image)
+    
+    # Get the train_op code that will be passed as a parameter
+    from shared_components import get_train_op_code
+    train_op_code = get_train_op_code(copy_data_to_local_disk)
 
     custom_training_job = create_custom_training_job_from_component(
         train_op,
@@ -171,6 +157,7 @@ def submit_single_component_pipeline(
             tool=tool,
             subcommand=subcommand,
             config=config,
+            train_op_code=train_op_code,
             git_sha=git_sha,
             copy_data_to_local_disk=copy_data_to_local_disk,
         ).set_display_name(display_name)
