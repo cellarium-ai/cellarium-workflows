@@ -11,7 +11,7 @@ from kfp import compiler, dsl
 from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
-    create_train_op_function,
+    get_train_op_code,
     create_vertex_ai_train_op_component,
 )
 
@@ -156,7 +156,6 @@ def submit_sequential_pipeline(
     train_op = create_vertex_ai_train_op_component(base_image)
     
     # Get the train_op code that will be passed as a parameter
-    from shared_components import get_train_op_code
     train_op_code = get_train_op_code(copy_data_to_local_disk)
 
     # create component definitions
