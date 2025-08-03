@@ -55,7 +55,7 @@ from shared_components import (
 )
 @click.option(
     "--machine-type",
-    default="n1-standard-4",
+    default="n1-standard-8",
     help="Machine type for the training job, e.g. 'n1-standard-16'.",
 )
 @click.option(
