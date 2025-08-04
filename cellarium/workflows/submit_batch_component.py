@@ -15,6 +15,8 @@ from shared_components import (
     get_allowed_cli_tool_names,
     create_batch_script,
     get_machine_type_resources,
+    extract_output_gcs_bucket_from_config,
+    mount_path,
 )
 
 
@@ -33,6 +35,7 @@ def create_batch_job_spec(
     accelerator_count: int = 1,
     max_run_duration: str = "3600s",
     capture_logs_to_gcs: bool = False,
+    output_gcs_bucket: str = None,
 ) -> batch_v1.Job:
     """
     Create a Google Cloud Batch job specification.
@@ -52,6 +55,7 @@ def create_batch_job_spec(
         accelerator_count: Number of GPUs
         max_run_duration: Maximum runtime in seconds format
         capture_logs_to_gcs: Capture stdout/stderr to files for GCS sync
+        output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
     
     Returns:
         Google Cloud Batch job specification
@@ -98,6 +102,28 @@ def create_batch_job_spec(
         runnable.environment.variables[key] = value
     
     task_spec.runnables = [runnable]
+    
+    # Add GCS volume mounting if output bucket is specified
+    if output_gcs_bucket:
+        print(f"🗂️  Mounting GCS bucket: {output_gcs_bucket} -> {mount_path}")
+
+        # Create a GCS volume
+        volume = batch_v1.Volume()
+        gcs_volume = batch_v1.GCS()
+        # Strip gs:// prefix if present - Google Batch expects just bucket/path
+        remote_path = output_gcs_bucket.rstrip('/')
+        if remote_path.startswith('gs://'):
+            remote_path = remote_path[5:]  # Remove 'gs://' prefix
+        gcs_volume.remote_path = remote_path
+        volume.gcs = gcs_volume
+        volume.mount_path = mount_path
+
+        # Add the volume to the task spec
+        task_spec.volumes = [volume]
+        
+        print(f"✅ GCS volume configured for direct output writing (remote_path: {remote_path})")
+    else:
+        print("📁 No output GCS bucket specified, using local storage")
     
     # Set compute resources based on machine type
     cpu_milli, memory_mib = get_machine_type_resources(machine_type)
@@ -153,8 +179,12 @@ def create_batch_job_spec(
         # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
         # This significantly reduces Cloud Logging costs while still preserving logs in GCS
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
-        job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
-        print("📝 Logs will be saved to local files and synced to GCS (Cloud Logging disabled to save costs)")
+        if output_gcs_bucket:
+            job.logs_policy.logs_path = f"{mount_path}/job_logs"
+            print("📝 Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)")
+        else:
+            job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
+            print("📝 Logs will be saved to local files and synced to GCS (Cloud Logging disabled to save costs)")
     else:
         # Default behavior - all logs go to Cloud Logging
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -289,6 +319,13 @@ def submit_batch_component(
                 f"Allowed tool names:\n{cli_tool_names}"
             )
     
+    # Auto-detect output GCS bucket from config file
+    output_gcs_bucket = extract_output_gcs_bucket_from_config(config)
+    if output_gcs_bucket:
+        print(f"🗂️  Auto-detected output GCS bucket from config: {output_gcs_bucket}")
+    else:
+        print("📁 No GCS output bucket detected, using local storage only")
+    
     # Handle GPU settings
     if accelerator_count == 0:
         accelerator_type = ""
@@ -320,6 +357,7 @@ def submit_batch_component(
         accelerator_count=accelerator_count,
         max_run_duration=max_run_duration,
         capture_logs_to_gcs=capture_logs_to_gcs,
+        output_gcs_bucket=output_gcs_bucket,
     )
     
     # Submit the job

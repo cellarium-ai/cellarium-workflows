@@ -73,13 +73,6 @@ else:
     print('  2. CUDA version mismatch')
     print('  3. Missing nvidia-container-toolkit')
 "
-if [ ! -z "$TRAIN_OP_REQUIREMENTS" ]; then
-    echo "Installing: $TRAIN_OP_REQUIREMENTS"
-    pip install -q $TRAIN_OP_REQUIREMENTS
-    echo "✅ Python packages installed successfully"
-else
-    echo "⚠️  No TRAIN_OP_REQUIREMENTS specified"
-fi
 
 # Verify environment variables are set
 echo "🔍 Verifying environment variables..."

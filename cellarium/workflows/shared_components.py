@@ -1,6 +1,67 @@
 """Shared component code for cellarium workflows."""
 import os
+import yaml
+import gcsfs
 from pathlib import Path
+
+
+mount_path = "/mnt/share/gcs_output"
+
+
+def extract_output_gcs_bucket_from_config(config_path: str) -> str:
+    """
+    Extract the output GCS bucket path from the config file's trainer.default_root_dir.
+    
+    Args:
+        config_path: Path to the config YAML file (local or gs://)
+        
+    Returns:
+        GCS bucket path (e.g., 'gs://bucket/path') or empty string if not found/not GCS
+    """
+    try:
+        # Load the config file content as text
+        if config_path.startswith('gs://'):
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(config_path, 'r') as f:
+                content = f.read()
+        else:
+            with open(config_path, 'r') as f:
+                content = f.read()
+        
+        # Use regex to find default_root_dir value
+        import re
+        
+        # Look for default_root_dir: followed by the path
+        pattern = r'default_root_dir:\s*([^\s\n]+)'
+        match = re.search(pattern, content)
+        
+        if not match:
+            print("📁 No default_root_dir found in config")
+            return ""
+        
+        default_root_dir = match.group(1).strip()
+        
+        # Check if it's a GCS path
+        if default_root_dir.startswith('gs://'):
+            print(f"📋 Detected GCS output path: {default_root_dir}")
+            return default_root_dir
+        elif default_root_dir.startswith('/gcs/'):
+            # Convert /gcs/bucket/path format to gs://bucket/path
+            gcs_path = default_root_dir[5:]  # Remove '/gcs/' prefix
+            if '/' in gcs_path:
+                bucket, path = gcs_path.split('/', 1)
+                gcs_url = f"gs://{bucket}/{path}"
+            else:
+                gcs_url = f"gs://{gcs_path}"
+            print(f"📋 Detected GCS output path: {default_root_dir} -> {gcs_url}")
+            return gcs_url
+        else:
+            print(f"📁 Local output path detected: {default_root_dir}")
+            return ""
+            
+    except Exception as e:
+        print(f"⚠️  Warning: Could not parse config for output path: {e}")
+        return ""
 
 
 def get_machine_type_resources(machine_type: str) -> tuple[int, int]:
@@ -341,9 +402,13 @@ SETUP_EOF
 chmod +x /tmp/batch_setup.sh
 /tmp/batch_setup.sh
 
-# Create Python wrapper script that properly handles environment variables
+# Create Python wrapper script that properly handles environment variables and config path replacement
 cat > /tmp/train_op_wrapper.py << 'WRAPPER_EOF'
 import os
+import tempfile
+import yaml
+import shutil
+from pathlib import Path
 
 # Get environment variables
 tool = os.environ.get('TOOL')
@@ -351,6 +416,48 @@ subcommand = os.environ.get('SUBCOMMAND')
 config = os.environ.get('CONFIG')
 git_sha = os.environ.get('GIT_SHA')
 copy_data_to_local_disk = os.environ.get('COPY_DATA_TO_LOCAL_DISK', 'false').lower() == 'true'
+
+# Check if GCS volume is mounted and create modified config if needed
+original_config = config
+if os.path.exists('{mount_path}'):
+    print(f"✅ GCS volume mounted at {mount_path} - applying config path substitution")
+
+    # Load the original config
+    # The config should already be accessible locally at this point
+    try:
+        with open(config, 'r') as f:
+            config_content = f.read()
+    except FileNotFoundError:
+        print(f"⚠️  Config file not found at {config}, attempting to download from GCS")
+        if config.startswith('gs://'):
+            # Fallback: download from GCS if not found locally
+            import subprocess
+            temp_original = '/tmp/original_config.yaml'
+            subprocess.run(['gsutil', 'cp', config, temp_original], check=True)
+            with open(temp_original, 'r') as f:
+                config_content = f.read()
+        else:
+            raise
+    
+    # Replace /gcs/ paths with /mnt/share/gcs_output/ in the config content
+    modified_content = config_content.replace('/gcs/', f'{mount_path}/')
+
+    # Write modified config to a temporary file
+    temp_config = '/tmp/modified_config.yaml'
+    with open(temp_config, 'w') as f:
+        f.write(modified_content)
+    
+    # Update config path to use the modified version
+    config = temp_config
+    print(f"📝 Created modified config with updated paths: {{config}}")
+    
+    # Log the changes made
+    if '/gcs/' in config_content:
+        print(f"🔄 Replaced /gcs/ paths with {mount_path} in config")
+    else:
+        print("ℹ️  No /gcs/ paths found in config - no substitution needed")
+else:
+    print("📁 GCS volume not mounted - using original config paths")
 
 # Execute train_op code with proper variable scope
 {train_op_code}

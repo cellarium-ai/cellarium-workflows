@@ -16,6 +16,8 @@ from shared_components import (
     get_allowed_cli_tool_names,
     create_batch_script,
     get_machine_type_resources,
+    extract_output_gcs_bucket_from_config,
+    mount_path,
 )
 
 
@@ -79,6 +81,10 @@ def create_batch_pipeline_jobs(
         job_name = f"{pipeline_name}-{i}-{component_def['tool']}-{component_def['subcommand']}-{timestamp}-{short_uuid}"
         job_name = job_name.lower().replace("_", "-")
         
+        # Auto-detect output bucket from config file
+        config_path = component_def['config']
+        detected_bucket = extract_output_gcs_bucket_from_config(config_path)
+        
         # Create batch script for this component using the shared function
         batch_script = create_batch_script(
             tool=component_def['tool'],
@@ -102,12 +108,28 @@ def create_batch_pipeline_jobs(
         # Define the task specification
         task_spec = batch_v1.TaskSpec()
         
+        # Add GCS volume mounting if output bucket is detected
+        if detected_bucket:
+            volume = batch_v1.Volume()
+            gcs_volume = batch_v1.GCS()
+            # Strip gs:// prefix if present - Google Batch expects just bucket/path
+            remote_path = detected_bucket.rstrip('/')
+            if remote_path.startswith('gs://'):
+                remote_path = remote_path[5:]  # Remove 'gs://' prefix
+            gcs_volume.remote_path = remote_path
+            volume.gcs = gcs_volume
+            volume.mount_path = mount_path
+            
+            task_spec.volumes = [volume]
+            print(f"🔧 Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
+        
         # Configure the container runnable
         container = batch_v1.Runnable.Container()
         container.image_uri = base_image
         container.commands = ["/bin/bash", "-c", batch_script]
         
         # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
+        accelerator_count = component_def.get('accelerator_count', default_accelerator_count)
         if accelerator_count > 0:
             print(f"🔧 GPU access will be automatically configured by Google Cloud Batch for job {job_name}")
         
