@@ -14,6 +14,7 @@ from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
+    get_machine_type_resources,
 )
 
 
@@ -98,13 +99,12 @@ def create_batch_job_spec(
     
     task_spec.runnables = [runnable]
     
-    # Note: We don't set compute resources here because they should be determined
-    # by the machine type specified in the allocation policy. Setting explicit
-    # resource constraints can conflict with the chosen machine type.
-    
-    # GPU configuration goes in the allocation policy, not compute resources
-    if accelerator_count > 0 and accelerator_type:
-        print(f"Note: GPU configuration ({accelerator_count}x {accelerator_type}) will be set in allocation policy")
+    # Set compute resources based on machine type
+    cpu_milli, memory_mib = get_machine_type_resources(machine_type)
+    compute_resource = batch_v1.ComputeResource()
+    compute_resource.cpu_milli = cpu_milli
+    compute_resource.memory_mib = memory_mib
+    task_spec.compute_resource = compute_resource
     
     # Set maximum run duration
     task_spec.max_run_duration = {"seconds": int(max_run_duration.rstrip("s"))}

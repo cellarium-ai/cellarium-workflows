@@ -2,6 +2,127 @@
 import os
 from pathlib import Path
 
+
+def get_machine_type_resources(machine_type: str) -> tuple[int, int]:
+    """
+    Get CPU (in milliCPU) and memory (in MiB) for a given machine type.
+    
+    Args:
+        machine_type: Machine type string (e.g., 'n1-standard-4')
+        
+    Returns:
+        Tuple of (cpu_milli, memory_mib)
+    """
+    # Common machine type mappings
+    # Format: machine_type -> (cpu_milli, memory_mib)
+    machine_type_specs = {
+        # N1 Standard series
+        "n1-standard-1": (1000, 3840),      # 1 vCPU, 3.75 GB
+        "n1-standard-2": (2000, 7680),      # 2 vCPU, 7.5 GB
+        "n1-standard-4": (4000, 15360),     # 4 vCPU, 15 GB
+        "n1-standard-8": (8000, 30720),     # 8 vCPU, 30 GB
+        "n1-standard-16": (16000, 61440),   # 16 vCPU, 60 GB
+        "n1-standard-32": (32000, 122880),  # 32 vCPU, 120 GB
+        "n1-standard-64": (64000, 245760),  # 64 vCPU, 240 GB
+        "n1-standard-96": (96000, 368640),  # 96 vCPU, 360 GB
+        
+        # N1 High-memory series
+        "n1-highmem-1": (1000, 6656),       # 1 vCPU, 6.5 GB
+        "n1-highmem-2": (2000, 13312),      # 2 vCPU, 13 GB
+        "n1-highmem-4": (4000, 26624),      # 4 vCPU, 26 GB
+        "n1-highmem-8": (8000, 53248),      # 8 vCPU, 52 GB
+        "n1-highmem-16": (16000, 106496),   # 16 vCPU, 104 GB
+        "n1-highmem-32": (32000, 212992),   # 32 vCPU, 208 GB
+        "n1-highmem-64": (64000, 425984),   # 64 vCPU, 416 GB
+        "n1-highmem-96": (96000, 638976),   # 96 vCPU, 624 GB
+        
+        # N1 High-CPU series
+        "n1-highcpu-2": (2000, 1843),       # 2 vCPU, 1.8 GB
+        "n1-highcpu-4": (4000, 3686),       # 4 vCPU, 3.6 GB
+        "n1-highcpu-8": (8000, 7373),       # 8 vCPU, 7.2 GB
+        "n1-highcpu-16": (16000, 14746),    # 16 vCPU, 14.4 GB
+        "n1-highcpu-32": (32000, 29491),    # 32 vCPU, 28.8 GB
+        "n1-highcpu-64": (64000, 58982),    # 64 vCPU, 57.6 GB
+        "n1-highcpu-96": (96000, 88474),    # 96 vCPU, 86.4 GB
+        
+        # N2 Standard series
+        "n2-standard-2": (2000, 8192),      # 2 vCPU, 8 GB
+        "n2-standard-4": (4000, 16384),     # 4 vCPU, 16 GB
+        "n2-standard-8": (8000, 32768),     # 8 vCPU, 32 GB
+        "n2-standard-16": (16000, 65536),   # 16 vCPU, 64 GB
+        "n2-standard-32": (32000, 131072),  # 32 vCPU, 128 GB
+        "n2-standard-48": (48000, 196608),  # 48 vCPU, 192 GB
+        "n2-standard-64": (64000, 262144),  # 64 vCPU, 256 GB
+        "n2-standard-80": (80000, 327680),  # 80 vCPU, 320 GB
+        "n2-standard-96": (96000, 393216),  # 96 vCPU, 384 GB
+        "n2-standard-128": (128000, 524288), # 128 vCPU, 512 GB
+        
+        # N2 High-memory series
+        "n2-highmem-2": (2000, 16384),      # 2 vCPU, 16 GB
+        "n2-highmem-4": (4000, 32768),      # 4 vCPU, 32 GB
+        "n2-highmem-8": (8000, 65536),      # 8 vCPU, 64 GB
+        "n2-highmem-16": (16000, 131072),   # 16 vCPU, 128 GB
+        "n2-highmem-32": (32000, 262144),   # 32 vCPU, 256 GB
+        "n2-highmem-48": (48000, 393216),   # 48 vCPU, 384 GB
+        "n2-highmem-64": (64000, 524288),   # 64 vCPU, 512 GB
+        "n2-highmem-80": (80000, 655360),   # 80 vCPU, 640 GB
+        "n2-highmem-96": (96000, 786432),   # 96 vCPU, 768 GB
+        "n2-highmem-128": (128000, 884736), # 128 vCPU, 864 GB
+        
+        # N2 High-CPU series
+        "n2-highcpu-2": (2000, 2048),       # 2 vCPU, 2 GB
+        "n2-highcpu-4": (4000, 4096),       # 4 vCPU, 4 GB
+        "n2-highcpu-8": (8000, 8192),       # 8 vCPU, 8 GB
+        "n2-highcpu-16": (16000, 16384),    # 16 vCPU, 16 GB
+        "n2-highcpu-32": (32000, 32768),    # 32 vCPU, 32 GB
+        "n2-highcpu-48": (48000, 49152),    # 48 vCPU, 48 GB
+        "n2-highcpu-64": (64000, 65536),    # 64 vCPU, 64 GB
+        "n2-highcpu-80": (80000, 81920),    # 80 vCPU, 80 GB
+        "n2-highcpu-96": (96000, 98304),    # 96 vCPU, 96 GB
+        
+        # C2 High-CPU series
+        "c2-standard-4": (4000, 16384),     # 4 vCPU, 16 GB
+        "c2-standard-8": (8000, 32768),     # 8 vCPU, 32 GB
+        "c2-standard-16": (16000, 65536),   # 16 vCPU, 64 GB
+        "c2-standard-30": (30000, 122880),  # 30 vCPU, 120 GB
+        "c2-standard-60": (60000, 245760),  # 60 vCPU, 240 GB
+        
+        # E2 series
+        "e2-standard-2": (2000, 8192),      # 2 vCPU, 8 GB
+        "e2-standard-4": (4000, 16384),     # 4 vCPU, 16 GB
+        "e2-standard-8": (8000, 32768),     # 8 vCPU, 32 GB
+        "e2-standard-16": (16000, 65536),   # 16 vCPU, 64 GB
+        "e2-standard-32": (32000, 131072),  # 32 vCPU, 128 GB
+        
+        # A2 GPU-optimized series
+        "a2-highgpu-1g": (12000, 87040),    # 12 vCPU, 85 GB, 1 A100
+        "a2-highgpu-2g": (24000, 174080),   # 24 vCPU, 170 GB, 2 A100
+        "a2-highgpu-4g": (48000, 348160),   # 48 vCPU, 340 GB, 4 A100
+        "a2-highgpu-8g": (96000, 696320),   # 96 vCPU, 680 GB, 8 A100
+        "a2-megagpu-16g": (96000, 1392640), # 96 vCPU, 1360 GB, 16 A100
+        
+        # G2 GPU-optimized series
+        "g2-standard-4": (4000, 16384),     # 4 vCPU, 16 GB, 1 L4
+        "g2-standard-8": (8000, 32768),     # 8 vCPU, 32 GB, 1 L4
+        "g2-standard-12": (12000, 49152),   # 12 vCPU, 48 GB, 1 L4
+        "g2-standard-16": (16000, 65536),   # 16 vCPU, 64 GB, 1 L4
+        "g2-standard-24": (24000, 98304),   # 24 vCPU, 96 GB, 2 L4
+        "g2-standard-32": (32000, 131072),  # 32 vCPU, 128 GB, 1 L4
+        "g2-standard-48": (48000, 196608),  # 48 vCPU, 192 GB, 4 L4
+        "g2-standard-96": (96000, 393216),  # 96 vCPU, 384 GB, 8 L4
+    }
+    
+    if machine_type in machine_type_specs:
+        cpu_milli, memory_mib = machine_type_specs[machine_type]
+        print(f"📋 Machine type {machine_type}: {cpu_milli//1000} vCPU, {memory_mib//1024:.1f} GB")
+        return cpu_milli, memory_mib
+    else:
+        # For unknown machine types, use conservative defaults
+        print(f"⚠️  Unknown machine type '{machine_type}', using defaults: 2 vCPU, 2 GB")
+        print(f"   Consider adding this machine type to the mapping for optimal resource allocation")
+        return 2000, 2048  # 2 vCPU, 2 GB
+
+
 def get_train_op_requirements() -> list[str]:
     """Load the train_op requirements from the requirements file."""
     requirements_file = Path(__file__).parent.parent.parent / "requirements" / "train_op.txt"

@@ -15,6 +15,7 @@ from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
+    get_machine_type_resources,
 )
 
 
@@ -120,9 +121,13 @@ def create_batch_pipeline_jobs(
         
         task_spec.runnables = [runnable]
         
-        # Note: We don't set compute resources here because they should be determined
-        # by the machine type specified in the allocation policy. Setting explicit
-        # resource constraints can conflict with the chosen machine type.
+        # Set compute resources based on machine type
+        current_machine_type = component_def.get('machine_type', default_machine_type)
+        cpu_milli, memory_mib = get_machine_type_resources(current_machine_type)
+        compute_resource = batch_v1.ComputeResource()
+        compute_resource.cpu_milli = cpu_milli
+        compute_resource.memory_mib = memory_mib
+        task_spec.compute_resource = compute_resource
         
         # Set maximum run duration
         max_duration = component_def.get('max_run_duration', '3600s')
