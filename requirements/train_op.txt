@@ -1,0 +1,8 @@
+# Packages required for train_op execution
+# Used by both Vertex AI components and Google Batch jobs
+# this is here so that docker images need not contain these extras
+
+gcsfs  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
+tensorboard  # necessary to write tensorboard logs
+psutil  # necessary to log CPU stats
+ruamel.yaml  # necessary to handle yaml files with !FileLoader

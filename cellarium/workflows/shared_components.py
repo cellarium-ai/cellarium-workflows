@@ -2,6 +2,32 @@
 import os
 from pathlib import Path
 
+def get_train_op_requirements() -> list[str]:
+    """Load the train_op requirements from the requirements file."""
+    requirements_file = Path(__file__).parent.parent.parent / "requirements" / "train_op.txt"
+    
+    if not requirements_file.exists():
+        # Fallback to hardcoded list if file doesn't exist
+        return [
+            "gcsfs",
+            "tensorboard", 
+            "psutil",
+            "ruamel.yaml",
+        ]
+    
+    requirements = []
+    with open(requirements_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            # Skip empty lines and comments
+            if line and not line.startswith('#'):
+                # Extract package name (remove inline comments)
+                package = line.split('#')[0].strip()
+                if package:
+                    requirements.append(package)
+    
+    return requirements
+
 def _load_script_as_string(script_name: str) -> str:
     """Load a Python script from the scripts directory as a string."""
     scripts_dir = Path(__file__).parent / "scripts"
@@ -143,12 +169,7 @@ def create_vertex_ai_train_op_component(base_image: str = ""):
     from kfp import dsl
     
     @dsl.component(
-        packages_to_install=[
-            "gcsfs",  # necessary to allow config file outputs to /gcs/bucket/path to be copied to GCS
-            "tensorboard",  # necessary to write tensorboard logs
-            "psutil",  # necessary to log CPU stats
-            "ruamel.yaml",  # necessary to handle yaml files with !FileLoader
-        ],
+        packages_to_install=get_train_op_requirements(),
         base_image=base_image,
     )
     def train_op(
@@ -173,7 +194,7 @@ def create_vertex_ai_train_op_component(base_image: str = ""):
     return train_op
 
 # Re-export utility functions for backward compatibility
-def get_current_google_user() -> str | None:
+def get_current_google_user():
     """Get the current Google user from credentials."""
     try:
         from google.auth import default
@@ -208,7 +229,7 @@ def fetch_url_with_retries(url, retries=3, delay=1):
             else:
                 raise e
 
-def get_allowed_cli_tool_names(url: str) -> list[str] | None:
+def get_allowed_cli_tool_names(url: str):
     """
     Parse python code at a given URL to obtain a list of allowed cellarium-ml CLI tool names.
 
