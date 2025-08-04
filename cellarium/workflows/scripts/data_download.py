@@ -18,11 +18,7 @@ def download_file(src):
     print(f"Copied {src} to {dst}")
     return dst
 
-if config.startswith("gs://"):
-    config_local_path = download_file(config)
-    print(f"Copied {config} to {config_local_path}")
-else:
-    config_local_path = config
+config_local_path = config
 
 # 1. find data reference
 yaml = YAML()
@@ -34,7 +30,7 @@ try:
     original_data_reference = config_data["data"]["dadc"]["init_args"]["filenames"]
 except KeyError:
     raise RuntimeError(
-        f"Could not find dataset in {config} when attempting to access data.dadc.init_args.filenames\n\n"
+        f"Could not find dataset in {config_local_path} when attempting to access data.dadc.init_args.filenames\n\n"
         f"{os.system('cat ' + config_local_path)}"
     )
 
@@ -74,6 +70,3 @@ with open(config_local_path, "w") as f:
     yaml.dump(config_data, f)
 print(f"Re-writing config file {config_local_path} to point to local data:\n\n")
 os.system(f"cat {config_local_path}")
-
-config = config_local_path  # point to new config for the cellarium job
-print(config)

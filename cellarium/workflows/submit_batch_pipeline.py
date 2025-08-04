@@ -93,6 +93,7 @@ def create_batch_pipeline_jobs(
             git_sha=component_def.get('git_sha', git_sha),
             copy_data_to_local_disk=copy_data_to_local_disk,
             capture_logs_to_gcs=capture_logs_to_gcs,
+            output_gcs_bucket=detected_bucket,
         )
 
         # Create environment variables
@@ -110,17 +111,19 @@ def create_batch_pipeline_jobs(
         
         # Add GCS volume mounting if output bucket is detected
         if detected_bucket:
-            volume = batch_v1.Volume()
-            gcs_volume = batch_v1.GCS()
+            gcs_bucket = batch_v1.GCS()
             # Strip gs:// prefix if present - Google Batch expects just bucket/path
             remote_path = detected_bucket.rstrip('/')
             if remote_path.startswith('gs://'):
                 remote_path = remote_path[5:]  # Remove 'gs://' prefix
-            gcs_volume.remote_path = remote_path
-            volume.gcs = gcs_volume
-            volume.mount_path = mount_path
-            
-            task_spec.volumes = [volume]
+            gcs_bucket.remote_path = remote_path
+            gcs_volume = batch_v1.Volume()
+            gcs_volume.gcs = gcs_bucket
+            gcs_volume.mount_path = mount_path
+
+            # Add the volume to the task spec
+            task_spec.volumes = [gcs_volume]
+
             print(f"🔧 Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
         
         # Configure the container runnable

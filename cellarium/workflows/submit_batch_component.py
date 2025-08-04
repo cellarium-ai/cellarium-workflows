@@ -69,6 +69,7 @@ def create_batch_job_spec(
         git_sha=git_sha,
         copy_data_to_local_disk=copy_data_to_local_disk,
         capture_logs_to_gcs=capture_logs_to_gcs,
+        output_gcs_bucket=output_gcs_bucket,
     )
 
     # Create environment variables for the container
@@ -108,19 +109,19 @@ def create_batch_job_spec(
         print(f"🗂️  Mounting GCS bucket: {output_gcs_bucket} -> {mount_path}")
 
         # Create a GCS volume
-        volume = batch_v1.Volume()
-        gcs_volume = batch_v1.GCS()
+        gcs_bucket = batch_v1.GCS()
         # Strip gs:// prefix if present - Google Batch expects just bucket/path
         remote_path = output_gcs_bucket.rstrip('/')
         if remote_path.startswith('gs://'):
             remote_path = remote_path[5:]  # Remove 'gs://' prefix
-        gcs_volume.remote_path = remote_path
-        volume.gcs = gcs_volume
-        volume.mount_path = mount_path
+        gcs_bucket.remote_path = remote_path
+        gcs_volume = batch_v1.Volume()
+        gcs_volume.gcs = gcs_bucket
+        gcs_volume.mount_path = mount_path
 
         # Add the volume to the task spec
-        task_spec.volumes = [volume]
-        
+        task_spec.volumes = [gcs_volume]
+
         print(f"✅ GCS volume configured for direct output writing (remote_path: {remote_path})")
     else:
         print("📁 No output GCS bucket specified, using local storage")

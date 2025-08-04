@@ -5,7 +5,7 @@ import gcsfs
 from pathlib import Path
 
 
-mount_path = "/mnt/share/gcs_output"
+mount_path = "/mnt/disks/gcs_output"
 
 
 def extract_output_gcs_bucket_from_config(config_path: str) -> str:
@@ -16,7 +16,8 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
         config_path: Path to the config YAML file (local or gs://)
         
     Returns:
-        GCS bucket path (e.g., 'gs://bucket/path') or empty string if not found/not GCS
+ if os.path.exists('{mount_path}'):
+    print(f"✅ GCS volume mounted at {mount_path} - applying config path substitution")     GCS bucket path (e.g., 'gs://bucket/path') or empty string if not found/not GCS
     """
     try:
         # Load the config file content as text
@@ -360,6 +361,7 @@ def create_batch_script(
     git_sha: str,
     copy_data_to_local_disk: bool,
     capture_logs_to_gcs: bool = False,
+    output_gcs_bucket: str = "",
 ) -> str:
     """
     Create a batch script for Google Cloud Batch execution.
@@ -393,6 +395,7 @@ export GIT_SHA="{git_sha}"
 export COPY_DATA_TO_LOCAL_DISK="{copy_data_to_local_disk}"
 export CELLARIUM_CAPTURE_LOGS="{str(capture_logs_to_gcs).lower()}"
 export TRAIN_OP_REQUIREMENTS="{' '.join(train_op_requirements)}"
+export MOUNTED_GCS_PATH="{output_gcs_bucket}"
 
 # Run the batch setup script
 cat > /tmp/batch_setup.sh << 'SETUP_EOF'
@@ -422,25 +425,49 @@ original_config = config
 if os.path.exists('{mount_path}'):
     print(f"✅ GCS volume mounted at {mount_path} - applying config path substitution")
 
-    # Load the original config
-    # The config should already be accessible locally at this point
-    try:
+    # Load the original config - handle both local and GCS paths
+    if config.startswith('gs://'):
+        print(f"📥 Downloading config from GCS: {{config}}")
+        import gcsfs
+        fs = gcsfs.GCSFileSystem()
+        with fs.open(config, 'r') as f:
+            config_content = f.read()
+    else:
+        # Config is already a local path
+        print(f"📖 Reading local config: {{config}}")
         with open(config, 'r') as f:
             config_content = f.read()
-    except FileNotFoundError:
-        print(f"⚠️  Config file not found at {config}, attempting to download from GCS")
-        if config.startswith('gs://'):
-            # Fallback: download from GCS if not found locally
-            import subprocess
-            temp_original = '/tmp/original_config.yaml'
-            subprocess.run(['gsutil', 'cp', config, temp_original], check=True)
-            with open(temp_original, 'r') as f:
-                config_content = f.read()
-        else:
-            raise
     
-    # Replace /gcs/ paths with /mnt/share/gcs_output/ in the config content
-    modified_content = config_content.replace('/gcs/', f'{mount_path}/')
+    # Get the mounted GCS path from environment (set by the batch job)
+    # This should be the same path that was used for mounting
+    mounted_gcs_path = os.environ.get('MOUNTED_GCS_PATH', '')
+    
+    if mounted_gcs_path:
+        # Convert gs://bucket/path/to/file to /gcs/bucket/path/to/file for replacement
+        if mounted_gcs_path.startswith('gs://'):
+            gcs_local_path = '/gcs/' + mounted_gcs_path[5:]  # Remove 'gs://' and add '/gcs/'
+        else:
+            gcs_local_path = '/gcs/' + mounted_gcs_path
+        
+        # Replace the full mounted path, not just /gcs/
+        modified_content = config_content.replace(gcs_local_path, "{mount_path}")
+        print(f"🔄 Replacing {{gcs_local_path}} with {mount_path} in config")
+        
+        # Log the changes made
+        if gcs_local_path in config_content:
+            print(f"✅ Successfully updated GCS paths in config")
+        else:
+            print("ℹ️  No matching GCS paths found in config - no substitution needed")
+    else:
+        # Fallback: replace /gcs/ prefix (original behavior)
+        modified_content = config_content.replace('/gcs/', f'{mount_path}/')
+        print(f"⚠️  No MOUNTED_GCS_PATH found, using fallback replacement of /gcs/ with {mount_path}/")
+        
+        # Log the changes made
+        if '/gcs/' in config_content:
+            print(f"✅ Successfully updated GCS paths in config")
+        else:
+            print("ℹ️  No /gcs/ paths found in config - no substitution needed")
 
     # Write modified config to a temporary file
     temp_config = '/tmp/modified_config.yaml'
@@ -449,13 +476,8 @@ if os.path.exists('{mount_path}'):
     
     # Update config path to use the modified version
     config = temp_config
+    os.environ["CONFIG"] = config
     print(f"📝 Created modified config with updated paths: {{config}}")
-    
-    # Log the changes made
-    if '/gcs/' in config_content:
-        print(f"🔄 Replaced /gcs/ paths with {mount_path} in config")
-    else:
-        print("ℹ️  No /gcs/ paths found in config - no substitution needed")
 else:
     print("📁 GCS volume not mounted - using original config paths")
 
