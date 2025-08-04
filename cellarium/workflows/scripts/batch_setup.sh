@@ -18,12 +18,12 @@ echo "Environment variables:"
 echo "  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-not set}"
 echo "  NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-not set}"
 
-echo "Checking for GPU hardware..."
-if lspci | grep -i nvidia; then
-    echo "✅ NVIDIA hardware detected"
-else
-    echo "❌ No NVIDIA hardware found in lspci"
-fi
+# echo "Checking for GPU hardware..."
+# if lspci | grep -i nvidia; then
+#     echo "✅ NVIDIA hardware detected"
+# else
+#     echo "❌ No NVIDIA hardware found in lspci"
+# fi
 
 echo "Checking for nvidia-smi..."
 if command -v nvidia-smi &> /dev/null; then
@@ -41,7 +41,7 @@ echo "Checking Docker GPU runtime..."
 if docker info 2>/dev/null | grep -i nvidia; then
     echo "✅ Docker NVIDIA runtime detected"
 else
-    echo "⚠️  Docker NVIDIA runtime not detected (this might be the issue)"
+    echo "⚠️  Docker NVIDIA runtime not detected"
 fi
 
 # Install required Python packages
