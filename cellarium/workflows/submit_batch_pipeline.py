@@ -106,6 +106,12 @@ def create_batch_pipeline_jobs(
         container.image_uri = base_image
         container.commands = ["/bin/bash", "-c", batch_script]
         
+        # Add GPU-specific container options if GPUs are configured
+        if accelerator_count > 0:
+            # Enable GPU access for the container
+            container.options = "--gpus=all"
+            print(f"🔧 Configured container with GPU access: --gpus=all for job {job_name}")
+        
         runnable = batch_v1.Runnable()
         runnable.container = container
         
@@ -141,11 +147,20 @@ def create_batch_pipeline_jobs(
         accelerator_type = component_def.get('accelerator_type', default_accelerator_type)
         
         if accelerator_count > 0 and accelerator_type:
+            print(f"🔧 GPU Configuration for {job_name}:")
+            print(f"   Type: {accelerator_type}")
+            print(f"   Count: {accelerator_count}")
+            print(f"   Formatted type: {accelerator_type.lower().replace('_', '-')}")
+            
             # For Batch, GPUs are configured via accelerators in the instance policy
             accelerator = batch_v1.AllocationPolicy.Accelerator()
             accelerator.type_ = accelerator_type.lower().replace('_', '-')
             accelerator.count = accelerator_count
             instance_policy.accelerators = [accelerator]
+            
+            print(f"✅ Added GPU to job specification for {job_name}")
+        else:
+            print(f"❌ No GPU configured for {job_name} (count: {accelerator_count}, type: '{accelerator_type}')")
         
         instance_policy_or_template = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
         instance_policy_or_template.policy = instance_policy

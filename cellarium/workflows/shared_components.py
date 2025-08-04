@@ -51,6 +51,19 @@ def _load_script_as_string(script_name: str) -> str:
     
     return '\n'.join(lines[start_idx:])
 
+def _load_bash_script_as_string(script_name: str) -> str:
+    """Load a bash script from the scripts directory as a string."""
+    scripts_dir = Path(__file__).parent / "scripts"
+    script_path = scripts_dir / f"{script_name}.sh"
+    
+    if not script_path.exists():
+        raise FileNotFoundError(f"Script not found: {script_path}")
+    
+    with open(script_path, "r") as f:
+        content = f.read()
+    
+    return content
+
 def get_pytorch_setup_code() -> str:
     """Returns the PyTorch setup code as a string."""
     return _load_script_as_string("pytorch_setup")
@@ -154,6 +167,10 @@ def get_train_op_code(copy_data_to_local_disk: bool = True) -> str:
     """
     return _get_train_op_text(copy_data_to_local_disk)
 
+def get_batch_setup_script() -> str:
+    """Returns the batch setup script as a string."""
+    return _load_bash_script_as_string("batch_setup")
+
 def create_batch_script(
     tool: str,
     subcommand: str,
@@ -165,8 +182,8 @@ def create_batch_script(
     """
     Create a batch script for Google Cloud Batch execution.
     
-    This generates the complete bash script that installs GPU drivers, Python packages,
-    sets up environment variables, and executes the train_op code.
+    This generates the complete bash script that sets up the environment
+    and executes the train_op code.
     
     Args:
         tool: Cellarium tool to run
@@ -181,26 +198,27 @@ def create_batch_script(
     """
     train_op_code = get_train_op_code(copy_data_to_local_disk)
     train_op_requirements = get_train_op_requirements()
+    batch_setup_script = get_batch_setup_script()
     
     return f'''#!/bin/bash
 set -e
 
-# Install GPU drivers if GPUs are allocated
-echo "🔧 Installing GPU drivers..."
-# For Ubuntu/Debian based images
-apt-get update
-apt-get install -y nvidia-driver-470 || apt-get install -y nvidia-driver-460 || echo "GPU driver installation skipped"
-
-# Install required Python packages
-pip install {' '.join(train_op_requirements)}
-
-# Set up environment variables
+# Set up environment variables for the setup script
 export TOOL="{tool}"
 export SUBCOMMAND="{subcommand}"
 export CONFIG="{config}"
 export GIT_SHA="{git_sha}"
 export COPY_DATA_TO_LOCAL_DISK="{copy_data_to_local_disk}"
 export CELLARIUM_CAPTURE_LOGS="{str(capture_logs_to_gcs).lower()}"
+export TRAIN_OP_REQUIREMENTS="{' '.join(train_op_requirements)}"
+
+# Run the batch setup script
+cat > /tmp/batch_setup.sh << 'SETUP_EOF'
+{batch_setup_script}
+SETUP_EOF
+
+chmod +x /tmp/batch_setup.sh
+/tmp/batch_setup.sh
 
 # Create Python wrapper script that properly handles environment variables
 cat > /tmp/train_op_wrapper.py << 'WRAPPER_EOF'
@@ -213,14 +231,12 @@ config = os.environ.get('CONFIG')
 git_sha = os.environ.get('GIT_SHA')
 copy_data_to_local_disk = os.environ.get('COPY_DATA_TO_LOCAL_DISK', 'false').lower() == 'true'
 
-# Define train_op code and execute with proper variable scope
-train_op_code = """{train_op_code}"""
-
-# Execute with variables in scope
-exec(train_op_code, {{'__name__': '__main__', 'tool': tool, 'subcommand': subcommand, 'config': config, 'git_sha': git_sha, 'copy_data_to_local_disk': copy_data_to_local_disk}})
+# Execute train_op code with proper variable scope
+{train_op_code}
 WRAPPER_EOF
 
 # Execute the training operation
+echo "🚀 Starting training operation..."
 python3 /tmp/train_op_wrapper.py
 '''
 
