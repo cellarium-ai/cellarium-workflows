@@ -106,11 +106,9 @@ def create_batch_pipeline_jobs(
         container.image_uri = base_image
         container.commands = ["/bin/bash", "-c", batch_script]
         
-        # Add GPU-specific container options if GPUs are configured
+        # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
         if accelerator_count > 0:
-            # Enable GPU access for the container
-            container.options = "--gpus=all"
-            print(f"🔧 Configured container with GPU access: --gpus=all for job {job_name}")
+            print(f"🔧 GPU access will be automatically configured by Google Cloud Batch for job {job_name}")
         
         runnable = batch_v1.Runnable()
         runnable.container = container
@@ -122,11 +120,9 @@ def create_batch_pipeline_jobs(
         
         task_spec.runnables = [runnable]
         
-        # Configure compute resources
-        resources = batch_v1.ComputeResource()
-        resources.cpu_milli = component_def.get('cpu_milli', 4000)
-        resources.memory_mib = component_def.get('memory_mib', 16384)
-        task_spec.compute_resource = resources
+        # Note: We don't set compute resources here because they should be determined
+        # by the machine type specified in the allocation policy. Setting explicit
+        # resource constraints can conflict with the chosen machine type.
         
         # Set maximum run duration
         max_duration = component_def.get('max_run_duration', '3600s')
@@ -164,6 +160,8 @@ def create_batch_pipeline_jobs(
         
         instance_policy_or_template = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
         instance_policy_or_template.policy = instance_policy
+        if accelerator_count > 0 and accelerator_type:
+            instance_policy_or_template.install_gpu_drivers = True
         allocation_policy.instances = [instance_policy_or_template]
         
         # Create the job
