@@ -14,8 +14,7 @@ from google.cloud import batch_v1
 from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
-    get_train_op_code,
-    get_train_op_requirements,
+    create_batch_script,
 )
 
 
@@ -71,8 +70,6 @@ def create_batch_pipeline_jobs(
     so we create individual jobs that can be submitted sequentially or managed externally.
     """
     jobs = []
-    train_op_code = get_train_op_code(copy_data_to_local_disk)
-    train_op_requirements = get_train_op_requirements()
     
     for i, component_def in enumerate(component_definitions):
         # Create unique job name with timestamp and UUID
@@ -81,41 +78,15 @@ def create_batch_pipeline_jobs(
         job_name = f"{pipeline_name}-{i}-{component_def['tool']}-{component_def['subcommand']}-{timestamp}-{short_uuid}"
         job_name = job_name.lower().replace("_", "-")
         
-        # Create batch script for this component with proper environment variable handling
-        batch_script = f'''#!/bin/bash
-set -e
-
-# Install required Python packages
-pip install {' '.join(train_op_requirements)}
-
-# Set up environment variables
-export TOOL="{component_def['tool']}"
-export SUBCOMMAND="{component_def['subcommand']}"
-export CONFIG="{component_def['config']}"
-export GIT_SHA="{component_def.get('git_sha', git_sha)}"
-export COPY_DATA_TO_LOCAL_DISK="{copy_data_to_local_disk}"
-
-# Create Python wrapper script that properly handles environment variables
-cat > /tmp/train_op_wrapper.py << 'WRAPPER_EOF'
-import os
-
-# Get environment variables
-tool = os.environ.get('TOOL')
-subcommand = os.environ.get('SUBCOMMAND')
-config = os.environ.get('CONFIG')
-git_sha = os.environ.get('GIT_SHA')
-copy_data_to_local_disk = os.environ.get('COPY_DATA_TO_LOCAL_DISK', 'false').lower() == 'true'
-
-# Define train_op code and execute with proper variable scope
-train_op_code = """{train_op_code}"""
-
-# Execute with variables in scope
-exec(train_op_code, {{'__name__': '__main__', 'tool': tool, 'subcommand': subcommand, 'config': config, 'git_sha': git_sha, 'copy_data_to_local_disk': copy_data_to_local_disk}})
-WRAPPER_EOF
-
-# Execute the training operation
-python3 /tmp/train_op_wrapper.py
-'''
+        # Create batch script for this component using the shared function
+        batch_script = create_batch_script(
+            tool=component_def['tool'],
+            subcommand=component_def['subcommand'],
+            config=component_def['config'],
+            git_sha=component_def.get('git_sha', git_sha),
+            copy_data_to_local_disk=copy_data_to_local_disk,
+            capture_logs_to_gcs=capture_logs_to_gcs,
+        )
 
         # Create environment variables
         env_vars = {

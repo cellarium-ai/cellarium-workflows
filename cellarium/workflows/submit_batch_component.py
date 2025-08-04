@@ -13,8 +13,7 @@ from google.cloud import storage
 from shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
-    get_train_op_code,
-    get_train_op_requirements,
+    create_batch_script,
 )
 
 
@@ -57,42 +56,15 @@ def create_batch_job_spec(
         Google Cloud Batch job specification
     """
     
-    # Get the train_op code and requirements
-    train_op_code = get_train_op_code(copy_data_to_local_disk)
-    train_op_requirements = get_train_op_requirements()
-    
-    # Create a script that will execute the train_op code
-    batch_script = f'''#!/bin/bash
-set -e
-
-# Install required Python packages
-pip install {' '.join(train_op_requirements)}
-
-# Set up environment variables
-export TOOL="{tool}"
-export SUBCOMMAND="{subcommand}"
-export CONFIG="{config}"
-export GIT_SHA="{git_sha}"
-export COPY_DATA_TO_LOCAL_DISK="{copy_data_to_local_disk}"
-export CELLARIUM_CAPTURE_LOGS="{str(capture_logs_to_gcs).lower()}"
-
-# Create Python script to execute with environment variables as Python variables
-cat > /tmp/train_op.py << 'TRAIN_OP_EOF'
-import os
-
-# Get environment variables and set as Python variables
-tool = os.environ.get("TOOL", "{tool}")
-subcommand = os.environ.get("SUBCOMMAND", "{subcommand}")
-config = os.environ.get("CONFIG", "{config}")
-git_sha = os.environ.get("GIT_SHA", "{git_sha}")
-copy_data_to_local_disk = os.environ.get("COPY_DATA_TO_LOCAL_DISK", "{str(copy_data_to_local_disk).lower()}").lower() == "true"
-
-{train_op_code}
-TRAIN_OP_EOF
-
-# Execute the training operation
-python3 /tmp/train_op.py
-'''
+    # Create the batch script using the shared function
+    batch_script = create_batch_script(
+        tool=tool,
+        subcommand=subcommand,
+        config=config,
+        git_sha=git_sha,
+        copy_data_to_local_disk=copy_data_to_local_disk,
+        capture_logs_to_gcs=capture_logs_to_gcs,
+    )
 
     # Create environment variables for the container
     env_vars = {

@@ -154,6 +154,76 @@ def get_train_op_code(copy_data_to_local_disk: bool = True) -> str:
     """
     return _get_train_op_text(copy_data_to_local_disk)
 
+def create_batch_script(
+    tool: str,
+    subcommand: str,
+    config: str,
+    git_sha: str,
+    copy_data_to_local_disk: bool,
+    capture_logs_to_gcs: bool = False,
+) -> str:
+    """
+    Create a batch script for Google Cloud Batch execution.
+    
+    This generates the complete bash script that installs GPU drivers, Python packages,
+    sets up environment variables, and executes the train_op code.
+    
+    Args:
+        tool: Cellarium tool to run
+        subcommand: Subcommand (fit/predict)
+        config: Path to config file
+        git_sha: Git SHA for cellarium-ml
+        copy_data_to_local_disk: Whether to copy data locally
+        capture_logs_to_gcs: Whether to capture logs to GCS
+        
+    Returns:
+        Complete bash script as a string
+    """
+    train_op_code = get_train_op_code(copy_data_to_local_disk)
+    train_op_requirements = get_train_op_requirements()
+    
+    return f'''#!/bin/bash
+set -e
+
+# Install GPU drivers if GPUs are allocated
+echo "🔧 Installing GPU drivers..."
+# For Ubuntu/Debian based images
+apt-get update
+apt-get install -y nvidia-driver-470 || apt-get install -y nvidia-driver-460 || echo "GPU driver installation skipped"
+
+# Install required Python packages
+pip install {' '.join(train_op_requirements)}
+
+# Set up environment variables
+export TOOL="{tool}"
+export SUBCOMMAND="{subcommand}"
+export CONFIG="{config}"
+export GIT_SHA="{git_sha}"
+export COPY_DATA_TO_LOCAL_DISK="{copy_data_to_local_disk}"
+export CELLARIUM_CAPTURE_LOGS="{str(capture_logs_to_gcs).lower()}"
+
+# Create Python wrapper script that properly handles environment variables
+cat > /tmp/train_op_wrapper.py << 'WRAPPER_EOF'
+import os
+
+# Get environment variables
+tool = os.environ.get('TOOL')
+subcommand = os.environ.get('SUBCOMMAND')
+config = os.environ.get('CONFIG')
+git_sha = os.environ.get('GIT_SHA')
+copy_data_to_local_disk = os.environ.get('COPY_DATA_TO_LOCAL_DISK', 'false').lower() == 'true'
+
+# Define train_op code and execute with proper variable scope
+train_op_code = """{train_op_code}"""
+
+# Execute with variables in scope
+exec(train_op_code, {{'__name__': '__main__', 'tool': tool, 'subcommand': subcommand, 'config': config, 'git_sha': git_sha, 'copy_data_to_local_disk': copy_data_to_local_disk}})
+WRAPPER_EOF
+
+# Execute the training operation
+python3 /tmp/train_op_wrapper.py
+'''
+
 def create_vertex_ai_train_op_component(base_image: str = ""):
     """
     Creates a dsl.component decorated train_op function for Vertex AI execution.
