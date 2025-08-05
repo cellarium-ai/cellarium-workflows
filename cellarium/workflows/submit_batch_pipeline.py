@@ -140,6 +140,11 @@ def create_batch_pipeline_jobs(
         container.image_uri = base_image
         container.commands = ["/bin/bash", "-c", batch_script]
         
+        # Configure shared memory for PyTorch DataLoader workers
+        # This prevents "Bus error" when using multiple workers
+        container.options = "--shm-size=4g"  # Increased from 2g for more workers/prefetching
+        print(f"🧠 Configured container with shared memory size: 4GB for job {job_name}")
+        
         # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
         accelerator_count = component_def.get('accelerator_count', default_accelerator_count)
         if accelerator_count > 0:
