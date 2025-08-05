@@ -36,6 +36,7 @@ def create_batch_job_spec(
     max_run_duration: str = "3600s",
     capture_logs_to_gcs: bool = False,
     output_gcs_bucket: str = None,
+    mount_gcs_bucket: bool = True,
 ) -> batch_v1.Job:
     """
     Create a Google Cloud Batch job specification.
@@ -56,6 +57,7 @@ def create_batch_job_spec(
         max_run_duration: Maximum runtime in seconds format
         capture_logs_to_gcs: Capture stdout/stderr to files for GCS sync
         output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
+        mount_gcs_bucket: Whether to mount the GCS bucket as a volume (if False, outputs will be uploaded via gcsfs)
     
     Returns:
         Google Cloud Batch job specification
@@ -104,9 +106,9 @@ def create_batch_job_spec(
     
     task_spec.runnables = [runnable]
     
-    # Add GCS volume mounting if output bucket is specified
-    if output_gcs_bucket:
-        print(f"🗂️  Mounting GCS bucket: {output_gcs_bucket} -> {mount_path}")
+    # Add GCS volume mounting if output bucket is specified AND mounting is enabled
+    if output_gcs_bucket and mount_gcs_bucket:
+        print(f"🗂️  Mounting GCS bucket as volume: {output_gcs_bucket} -> {mount_path}")
 
         # Create a GCS volume
         gcs_bucket = batch_v1.GCS()
@@ -123,6 +125,9 @@ def create_batch_job_spec(
         task_spec.volumes = [gcs_volume]
 
         print(f"✅ GCS volume configured for direct output writing (remote_path: {remote_path})")
+    elif output_gcs_bucket and not mount_gcs_bucket:
+        print(f"📤 GCS bucket detected but volume mounting disabled: {output_gcs_bucket}")
+        print(f"   Outputs will be uploaded via gcsfs at job completion")
     else:
         print("📁 No output GCS bucket specified, using local storage")
     
@@ -180,7 +185,7 @@ def create_batch_job_spec(
         # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
         # This significantly reduces Cloud Logging costs while still preserving logs in GCS
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
-        if output_gcs_bucket:
+        if output_gcs_bucket and mount_gcs_bucket:
             job.logs_policy.logs_path = f"{mount_path}/job_logs"
             print("📝 Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)")
         else:
@@ -270,6 +275,12 @@ def create_batch_job_spec(
     is_flag=True,
     help="Capture stdout/stderr to files and sync to GCS instead of using Cloud Logging.",
 )
+@click.option(
+    "--mount-gcs-bucket",
+    default=True,
+    type=bool,
+    help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
+)
 def submit_batch_component(
     project: str,
     location: str,
@@ -285,6 +296,7 @@ def submit_batch_component(
     git_sha: str,
     base_image: str,
     capture_logs_to_gcs: bool,
+    mount_gcs_bucket: bool,
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -341,6 +353,7 @@ def submit_batch_component(
     print(f"Machine type: {machine_type}")
     print(f"Accelerator: {accelerator_count}x {accelerator_type}" if accelerator_count > 0 else "No accelerator")
     print(f"Max runtime: {max_run_duration}")
+    print(f"Mount GCS bucket: {mount_gcs_bucket}")
     
     # Create the batch job specification
     job_spec = create_batch_job_spec(
@@ -359,6 +372,7 @@ def submit_batch_component(
         max_run_duration=max_run_duration,
         capture_logs_to_gcs=capture_logs_to_gcs,
         output_gcs_bucket=output_gcs_bucket,
+        mount_gcs_bucket=mount_gcs_bucket,
     )
     
     # Submit the job

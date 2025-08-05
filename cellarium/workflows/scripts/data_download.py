@@ -7,6 +7,11 @@ import gcsfs
 import re
 from ruamel.yaml import YAML
 
+# Get config from environment variable
+config = os.environ.get('CONFIG')
+if not config:
+    raise RuntimeError("CONFIG environment variable not set")
+
 # 0. localize the config file and set up local data directory
 fs = gcsfs.GCSFileSystem()
 
@@ -16,6 +21,7 @@ os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 print(f"📁 Created local data directory: {LOCAL_DATA_DIR}")
 
 def download_file(src):
+    """Download a single file from GCS to local directory."""
     dst = os.path.join(LOCAL_DATA_DIR, os.path.basename(src))
     with fs.open(src, "rb") as fsrc:
         with open(dst, "wb") as fdst:
@@ -23,7 +29,17 @@ def download_file(src):
     print(f"Copied {src} to {dst}")
     return dst
 
-config_local_path = config
+# Handle config file localization
+if config.startswith('gs://'):
+    print(f"📥 Downloading config from GCS: {config}")
+    config_local_path = "/tmp/downloaded_config.yaml"
+    with fs.open(config, 'r') as fsrc:
+        with open(config_local_path, 'w') as fdst:
+            fdst.write(fsrc.read())
+    print(f"📝 Config downloaded to: {config_local_path}")
+else:
+    print(f"📖 Using local config: {config}")
+    config_local_path = config
 
 # 1. find data reference
 yaml = YAML()
@@ -78,3 +94,8 @@ print(f"📁 Data files now point to: {local_data_reference}")
 print(f"🔍 Config file contents:\n")
 with open(config_local_path, "r") as f:
     print(f.read())
+
+# Update the CONFIG environment variable to point to the local config file
+# This ensures that cellarium_cli.py will use the updated config with local data paths
+os.environ["CONFIG"] = config_local_path
+print(f"📝 Updated CONFIG environment variable to: {config_local_path}")

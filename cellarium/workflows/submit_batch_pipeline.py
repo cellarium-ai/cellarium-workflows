@@ -65,12 +65,16 @@ def create_batch_pipeline_jobs(
     default_accelerator_type: str = "nvidia-tesla-t4",
     default_accelerator_count: int = 0,
     capture_logs_to_gcs: bool = False,
+    mount_gcs_bucket: bool = True,
 ) -> List[batch_v1.Job]:
     """
     Create a list of Google Cloud Batch jobs for a pipeline.
     
     Note: Google Batch doesn't have built-in pipeline orchestration like Vertex AI,
     so we create individual jobs that can be submitted sequentially or managed externally.
+    
+    Args:
+        mount_gcs_bucket: Whether to mount GCS buckets as volumes (if False, outputs will be uploaded via gcsfs)
     """
     jobs = []
     
@@ -109,8 +113,8 @@ def create_batch_pipeline_jobs(
         # Define the task specification
         task_spec = batch_v1.TaskSpec()
         
-        # Add GCS volume mounting if output bucket is detected
-        if detected_bucket:
+        # Add GCS volume mounting if output bucket is detected AND mounting is enabled
+        if detected_bucket and mount_gcs_bucket:
             gcs_bucket = batch_v1.GCS()
             # Strip gs:// prefix if present - Google Batch expects just bucket/path
             remote_path = detected_bucket.rstrip('/')
@@ -124,7 +128,12 @@ def create_batch_pipeline_jobs(
             # Add the volume to the task spec
             task_spec.volumes = [gcs_volume]
 
-            print(f"🔧 Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
+            print(f"�️  Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
+        elif detected_bucket and not mount_gcs_bucket:
+            print(f"📤 GCS bucket detected but volume mounting disabled for job {job_name}: {detected_bucket}")
+            print(f"   Outputs will be uploaded via gcsfs at job completion")
+        else:
+            print(f"📁 No output GCS bucket detected for job {job_name}, using local storage")
         
         # Configure the container runnable
         container = batch_v1.Runnable.Container()
@@ -205,7 +214,10 @@ def create_batch_pipeline_jobs(
             # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
             # This significantly reduces Cloud Logging costs while still preserving logs in GCS
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
-            job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
+            if detected_bucket and mount_gcs_bucket:
+                job.logs_policy.logs_path = f"{mount_path}/job_logs"
+            else:
+                job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
         else:
             # Default behavior - all logs go to Cloud Logging
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -287,6 +299,12 @@ def create_batch_pipeline_jobs(
     is_flag=True,
     help="Capture stdout/stderr to files and sync to GCS instead of using Cloud Logging.",
 )
+@click.option(
+    "--mount-gcs-bucket",
+    default=True,
+    type=bool,
+    help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
+)
 def submit_batch_pipeline(
     project: str,
     location: str,
@@ -301,6 +319,7 @@ def submit_batch_pipeline(
     default_accelerator_type: str,
     default_accelerator_count: int,
     capture_logs_to_gcs: bool,
+    mount_gcs_bucket: bool,
 ):
     """
     Submit a multi-component cellarium-ml pipeline to Google Cloud Batch.
@@ -334,6 +353,7 @@ def submit_batch_pipeline(
     print(f"Project: {project}")
     print(f"Location: {location}")
     print(f"Sequential submission: {submit_sequentially}")
+    print(f"Mount GCS bucket: {mount_gcs_bucket}")
     
     # Validate all tools
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
@@ -360,6 +380,7 @@ def submit_batch_pipeline(
         default_accelerator_type=default_accelerator_type,
         default_accelerator_count=default_accelerator_count,
         capture_logs_to_gcs=capture_logs_to_gcs,
+        mount_gcs_bucket=mount_gcs_bucket,
     )
     
     # Submit jobs
