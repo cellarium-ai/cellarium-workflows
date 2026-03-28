@@ -66,6 +66,7 @@ def create_batch_pipeline_jobs(
     default_accelerator_count: int = 0,
     capture_logs_to_gcs: bool = False,
     mount_gcs_bucket: bool = True,
+    local_ssd_size_gb: int = 375,
 ) -> List[batch_v1.Job]:
     """
     Create a list of Google Cloud Batch jobs for a pipeline.
@@ -113,6 +114,9 @@ def create_batch_pipeline_jobs(
         # Define the task specification
         task_spec = batch_v1.TaskSpec()
         
+        # Set up volumes
+        task_volumes = []
+        
         # Add GCS volume mounting if output bucket is detected AND mounting is enabled
         if detected_bucket and mount_gcs_bucket:
             gcs_bucket = batch_v1.GCS()
@@ -124,16 +128,22 @@ def create_batch_pipeline_jobs(
             gcs_volume = batch_v1.Volume()
             gcs_volume.gcs = gcs_bucket
             gcs_volume.mount_path = mount_path
+            task_volumes.append(gcs_volume)
 
-            # Add the volume to the task spec
-            task_spec.volumes = [gcs_volume]
-
-            print(f"�️  Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
+            print(f"🗂️  Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}")
         elif detected_bucket and not mount_gcs_bucket:
             print(f"📤 GCS bucket detected but volume mounting disabled for job {job_name}: {detected_bucket}")
             print(f"   Outputs will be uploaded via gcsfs at job completion")
         else:
             print(f"📁 No output GCS bucket detected for job {job_name}, using local storage")
+        
+        # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd 
+        # when attached via allocation policy - no volume configuration needed
+        print(f"💾 Local SSD configured for job {job_name}: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)")
+        
+        # Set volumes on task spec
+        if task_volumes:
+            task_spec.volumes = task_volumes
         
         # Configure the container runnable
         container = batch_v1.Runnable.Container()
@@ -206,6 +216,15 @@ def create_batch_pipeline_jobs(
         instance_policy_or_template.policy = instance_policy
         if accelerator_count > 0 and accelerator_type:
             instance_policy_or_template.install_gpu_drivers = True
+        
+        # Add Local SSD configuration
+        attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
+        attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
+        attached_disk.new_disk.type_ = "local-ssd"
+        attached_disk.new_disk.size_gb = local_ssd_size_gb
+        attached_disk.device_name = "local-ssd"
+        instance_policy.disks = [attached_disk]
+        
         allocation_policy.instances = [instance_policy_or_template]
         
         # Create the job
@@ -222,7 +241,7 @@ def create_batch_pipeline_jobs(
             if detected_bucket and mount_gcs_bucket:
                 job.logs_policy.logs_path = f"{mount_path}/job_logs"
             else:
-                job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
+                job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
         else:
             # Default behavior - all logs go to Cloud Logging
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -310,6 +329,12 @@ def create_batch_pipeline_jobs(
     type=bool,
     help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
 )
+@click.option(
+    "--local-ssd-size-gb",
+    default=375,
+    type=int,
+    help="Size of Local SSD in GB (375, 750, 1125, etc.). Set to 0 to disable Local SSD and use boot disk only.",
+)
 def submit_batch_pipeline(
     project: str,
     location: str,
@@ -325,6 +350,7 @@ def submit_batch_pipeline(
     default_accelerator_count: int,
     capture_logs_to_gcs: bool,
     mount_gcs_bucket: bool,
+    local_ssd_size_gb: int,
 ):
     """
     Submit a multi-component cellarium-ml pipeline to Google Cloud Batch.
@@ -359,6 +385,7 @@ def submit_batch_pipeline(
     print(f"Location: {location}")
     print(f"Sequential submission: {submit_sequentially}")
     print(f"Mount GCS bucket: {mount_gcs_bucket}")
+    print(f"Local SSD size: {local_ssd_size_gb}GB")
     
     # Validate all tools
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
@@ -386,6 +413,7 @@ def submit_batch_pipeline(
         default_accelerator_count=default_accelerator_count,
         capture_logs_to_gcs=capture_logs_to_gcs,
         mount_gcs_bucket=mount_gcs_bucket,
+        local_ssd_size_gb=local_ssd_size_gb,
     )
     
     # Submit jobs

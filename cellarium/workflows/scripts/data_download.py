@@ -16,7 +16,14 @@ if not config:
 fs = gcsfs.GCSFileSystem()
 
 # Create a dedicated directory for training data on local disk
-LOCAL_DATA_DIR = "/tmp/training_data"
+# Prefer Local SSD if available for high-performance I/O
+if os.path.exists("/mnt/disks/local-ssd"):
+    LOCAL_DATA_DIR = "/mnt/disks/local-ssd/training_data"
+    print("💾 Using Local SSD for high-performance data storage")
+else:
+    LOCAL_DATA_DIR = "/tmp/training_data"
+    print("📁 Using boot disk for data storage")
+
 os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 print(f"📁 Created local data directory: {LOCAL_DATA_DIR}")
 
@@ -32,7 +39,12 @@ def download_file(src):
 # Handle config file localization
 if config.startswith('gs://'):
     print(f"📥 Downloading config from GCS: {config}")
-    config_local_path = "/tmp/downloaded_config.yaml"
+    # Use Local SSD for config if available, otherwise use /tmp
+    if os.path.exists("/mnt/disks/local-ssd"):
+        config_local_path = "/mnt/disks/local-ssd/downloaded_config.yaml"
+    else:
+        config_local_path = "/tmp/downloaded_config.yaml"
+    
     with fs.open(config, 'r') as fsrc:
         with open(config_local_path, 'w') as fdst:
             fdst.write(fsrc.read())

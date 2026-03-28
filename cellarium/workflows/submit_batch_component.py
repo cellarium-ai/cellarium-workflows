@@ -37,6 +37,7 @@ def create_batch_job_spec(
     capture_logs_to_gcs: bool = False,
     output_gcs_bucket: str = None,
     mount_gcs_bucket: bool = True,
+    local_ssd_size_gb: int = 375,
 ) -> batch_v1.Job:
     """
     Create a Google Cloud Batch job specification.
@@ -112,6 +113,8 @@ def create_batch_job_spec(
     task_spec.runnables = [runnable]
     
     # Add GCS volume mounting if output bucket is specified AND mounting is enabled
+    task_volumes = []
+    
     if output_gcs_bucket and mount_gcs_bucket:
         print(f"🗂️  Mounting GCS bucket as volume: {output_gcs_bucket} -> {mount_path}")
 
@@ -125,9 +128,7 @@ def create_batch_job_spec(
         gcs_volume = batch_v1.Volume()
         gcs_volume.gcs = gcs_bucket
         gcs_volume.mount_path = mount_path
-
-        # Add the volume to the task spec
-        task_spec.volumes = [gcs_volume]
+        task_volumes.append(gcs_volume)
 
         print(f"✅ GCS volume configured for direct output writing (remote_path: {remote_path})")
     elif output_gcs_bucket and not mount_gcs_bucket:
@@ -135,6 +136,14 @@ def create_batch_job_spec(
         print(f"   Outputs will be uploaded via gcsfs at job completion")
     else:
         print("📁 No output GCS bucket specified, using local storage")
+    
+    # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd 
+    # when attached via allocation policy - no volume configuration needed
+    print(f"💾 Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)")
+    
+    # Set volumes on task spec
+    if task_volumes:
+        task_spec.volumes = task_volumes
     
     # Set compute resources based on machine type
     cpu_milli, memory_mib = get_machine_type_resources(machine_type)
@@ -177,6 +186,15 @@ def create_batch_job_spec(
     instance_policy_or_template.policy = instance_policy
     if accelerator_count > 0 and accelerator_type:
         instance_policy_or_template.install_gpu_drivers = True
+    
+    # Add Local SSD configuration
+    attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
+    attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
+    attached_disk.new_disk.type_ = "local-ssd"
+    attached_disk.new_disk.size_gb = local_ssd_size_gb
+    attached_disk.device_name = "local-ssd"
+    instance_policy.disks = [attached_disk]
+    
     allocation_policy.instances = [instance_policy_or_template]
     
     # Create the job
@@ -194,8 +212,8 @@ def create_batch_job_spec(
             job.logs_policy.logs_path = f"{mount_path}/job_logs"
             print("📝 Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)")
         else:
-            job.logs_policy.logs_path = "/tmp/gcs_output/job_logs"
-            print("📝 Logs will be saved to local files and synced to GCS (Cloud Logging disabled to save costs)")
+            job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
+            print("📝 Logs will be saved to Local SSD and synced to GCS (Cloud Logging disabled to save costs)")
     else:
         # Default behavior - all logs go to Cloud Logging
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -286,6 +304,12 @@ def create_batch_job_spec(
     type=bool,
     help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
 )
+@click.option(
+    "--local-ssd-size-gb",
+    default=375,
+    type=int,
+    help="Size of Local SSD in GB (375, 750, 1125, etc.). Set to 0 to disable Local SSD and use boot disk only.",
+)
 def submit_batch_component(
     project: str,
     location: str,
@@ -302,6 +326,7 @@ def submit_batch_component(
     base_image: str,
     capture_logs_to_gcs: bool,
     mount_gcs_bucket: bool,
+    local_ssd_size_gb: int,
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -359,6 +384,7 @@ def submit_batch_component(
     print(f"Accelerator: {accelerator_count}x {accelerator_type}" if accelerator_count > 0 else "No accelerator")
     print(f"Max runtime: {max_run_duration}")
     print(f"Mount GCS bucket: {mount_gcs_bucket}")
+    print(f"Local SSD size: {local_ssd_size_gb}GB")
     
     # Create the batch job specification
     job_spec = create_batch_job_spec(
@@ -378,6 +404,7 @@ def submit_batch_component(
         capture_logs_to_gcs=capture_logs_to_gcs,
         output_gcs_bucket=output_gcs_bucket,
         mount_gcs_bucket=mount_gcs_bucket,
+        local_ssd_size_gb=local_ssd_size_gb,
     )
     
     # Submit the job
