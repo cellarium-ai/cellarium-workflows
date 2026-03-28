@@ -11,13 +11,12 @@ mount_path = "/mnt/disks/gcs_output"
 def extract_output_gcs_bucket_from_config(config_path: str) -> str:
     """
     Extract the output GCS bucket path from the config file's trainer.default_root_dir.
-    
+
     Args:
         config_path: Path to the config YAML file (local or gs://)
-        
+
     Returns:
- if os.path.exists('{mount_path}'):
-    print(f"✅ GCS volume mounted at {mount_path} - applying config path substitution")     GCS bucket path (e.g., 'gs://bucket/path') or empty string if not found/not GCS
+        The GCS bucket path if found, otherwise an empty string
     """
     try:
         # Load the config file content as text
@@ -186,30 +185,13 @@ def get_machine_type_resources(machine_type: str) -> tuple[int, int]:
 
 
 def get_train_op_requirements() -> list[str]:
-    """Load the train_op requirements from the requirements file."""
-    requirements_file = Path(__file__).parent.parent.parent / "requirements" / "train_op.txt"
-    
-    if not requirements_file.exists():
-        # Fallback to hardcoded list if file doesn't exist
-        return [
-            "gcsfs",
-            "tensorboard", 
-            "psutil",
-            "ruamel.yaml",
-        ]
-    
-    requirements = []
-    with open(requirements_file, "r") as f:
-        for line in f:
-            line = line.strip()
-            # Skip empty lines and comments
-            if line and not line.startswith('#'):
-                # Extract package name (remove inline comments)
-                package = line.split('#')[0].strip()
-                if package:
-                    requirements.append(package)
-    
-    return requirements
+    """Return the packages required for train_op execution."""
+    return [
+        "gcsfs",
+        "tensorboard",
+        "psutil",
+        "ruamel.yaml",
+    ]
 
 def _load_script_as_string(script_name: str) -> str:
     """Load a Python script from the scripts directory as a string."""

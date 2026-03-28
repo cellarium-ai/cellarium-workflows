@@ -1,10 +1,10 @@
 """Run a single component cellarium-ml job locally. Useful for testing."""
 
 import click
-from shared_components import create_train_op_function
+from .shared_components import create_train_op_function
 
 
-@click.command()
+@click.command(short_help="Run a single-component cellarium-ml job locally.")
 @click.option(
     "--tool",
     required=True,

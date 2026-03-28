@@ -7,7 +7,7 @@ from google_cloud_pipeline_components.v1.custom_job import (
 )
 from kfp import compiler, dsl
 
-from shared_components import (
+from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     get_train_op_code,
@@ -15,7 +15,7 @@ from shared_components import (
 )
 
 
-@click.command()
+@click.command(short_help="Submit a single-component job to Vertex AI Pipelines.")
 @click.option(
     "--tool",
     required=True,

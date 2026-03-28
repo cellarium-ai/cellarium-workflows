@@ -228,7 +228,7 @@ def create_batch_job_spec(
     return job
 
 
-@click.command()
+@click.command(short_help="Submit a single-component job to Google Cloud Batch.")
 @click.option(
     "--tool",
     required=True,
@@ -316,6 +316,12 @@ def create_batch_job_spec(
     type=int,
     help="Size of Local SSD in GB (375, 750, 1125, etc.). Set to 0 to disable Local SSD and use boot disk only.",
 )
+@click.option(
+    "--dry-run",
+    default=False,
+    is_flag=True,
+    help="Build and validate the job spec without submitting to Google Cloud Batch.",
+)
 def submit_batch_component(
     project: str,
     location: str,
@@ -333,6 +339,7 @@ def submit_batch_component(
     capture_logs_to_gcs: bool,
     mount_gcs_bucket: bool,
     local_ssd_size_gb: int,
+    dry_run: bool = False,
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -417,6 +424,12 @@ def submit_batch_component(
         local_ssd_size_gb=local_ssd_size_gb,
     )
     
+    # Dry-run: validate and print job spec without submitting
+    if dry_run:
+        print("🔍 Dry run: job spec built successfully, skipping submission.")
+        print(job_spec)
+        return
+
     # Submit the job
     client = batch_v1.BatchServiceClient()
     parent = f"projects/{project}/locations/{location}"

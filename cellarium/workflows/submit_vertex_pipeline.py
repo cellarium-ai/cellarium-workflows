@@ -8,7 +8,7 @@ from google_cloud_pipeline_components.v1.custom_job import (
 )
 from kfp import compiler, dsl
 
-from shared_components import (
+from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     get_train_op_code,
@@ -47,7 +47,7 @@ def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
     return display_name, component_definitions
 
 
-@click.command()
+@click.command(short_help="Submit a multi-step sequential pipeline to Vertex AI Pipelines.")
 @click.option(
     "--pipeline-config",
     required=True,

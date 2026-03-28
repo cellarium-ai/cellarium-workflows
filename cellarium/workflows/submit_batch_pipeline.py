@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 import click
 from google.cloud import batch_v1
 
-from shared_components import (
+from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
@@ -251,7 +251,7 @@ def create_batch_pipeline_jobs(
     return jobs
 
 
-@click.command()
+@click.command(short_help="Submit a multi-step pipeline of jobs to Google Cloud Batch.")
 @click.option(
     "--config",
     required=True,
