@@ -6,7 +6,6 @@ are used as fixtures.  gcsfs is patched so no real GCS calls are made; the
 mock maps expected GCS paths straight back to the local file paths.
 """
 
-import io
 import os
 import re
 import textwrap
@@ -28,7 +27,7 @@ EXTRACT_FILES = sorted(
     key=lambda p: int(re.search(r"extract_(\d+)", p.name).group(1)),
 )
 N_FILES = len(EXTRACT_FILES)  # 10
-OBS_PER_FILE = 10_000          # confirmed from local files
+OBS_PER_FILE = 10_000  # confirmed from local files
 FAKE_BUCKET = "gs://fake-bucket/fake-prefix"
 
 
@@ -106,7 +105,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         doc = _load_yaml(out)
         filenames = doc["data"]["dadc"]["init_args"]["filenames"]
@@ -116,7 +118,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         doc = _load_yaml(out)
         assert doc["data"]["dadc"]["init_args"]["shard_size"] == OBS_PER_FILE
@@ -125,7 +130,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         doc = _load_yaml(out)
         assert doc["data"]["dadc"]["init_args"]["last_shard_size"] == OBS_PER_FILE
@@ -134,7 +142,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         assert out != str(cfg)
 
@@ -143,7 +154,10 @@ class TestExtractBucketPatching:
         original = _base_config_yaml()
         cfg.write_text(original)
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         assert cfg.read_text() == original
 
@@ -151,7 +165,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
         assert os.path.isfile(out)
         doc = _load_yaml(out)
@@ -162,7 +179,10 @@ class TestExtractBucketPatching:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(_base_config_yaml())
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             out = prepare_config_with_overrides(str(cfg), FAKE_BUCKET + "/")
         doc = _load_yaml(out)
         filenames = doc["data"]["dadc"]["init_args"]["filenames"]
@@ -175,8 +195,13 @@ class TestErrorCases:
         cfg.write_text(_base_config_yaml())
         fake_fs = MagicMock()
         fake_fs.glob.return_value = []
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
-            with pytest.raises(FileNotFoundError, match="No extract_.*\\.h5ad files found"):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
+            with pytest.raises(
+                FileNotFoundError, match="No extract_.*\\.h5ad files found"
+            ):
                 prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
 
     def test_missing_dadc_key_raises(self, tmp_path):
@@ -188,6 +213,9 @@ class TestErrorCases:
         cfg = tmp_path / "config.yaml"
         cfg.write_text(bad_yaml)
         fake_fs = _make_fake_fs()
-        with patch("cellarium.workflows.shared_components.gcsfs.GCSFileSystem", return_value=fake_fs):
+        with patch(
+            "cellarium.workflows.shared_components.gcsfs.GCSFileSystem",
+            return_value=fake_fs,
+        ):
             with pytest.raises(KeyError):
                 prepare_config_with_overrides(str(cfg), FAKE_BUCKET)
