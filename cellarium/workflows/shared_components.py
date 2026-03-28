@@ -2,6 +2,7 @@
 
 import gcsfs
 from pathlib import Path
+from typing import Optional
 
 
 mount_path = "/mnt/disks/gcs_output"
@@ -61,6 +62,106 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
     except Exception as e:
         print(f" Warning: Could not parse config for output path: {e}")
         return ""
+
+
+def prepare_config_with_overrides(
+    config_path: str,
+    extract_bucket: Optional[str] = None,
+) -> str:
+    """
+    Prepare a config file for job submission, optionally patching dataset fields.
+
+    If ``extract_bucket`` is provided (e.g. ``gs://my-bucket/my-prefix``), the
+    function lists all ``extract_*.h5ad`` files at that GCS prefix, reads the
+    first and last files to determine ``shard_size`` and ``last_shard_size``,
+    constructs a brace-expansion ``filenames`` pattern, patches those three
+    fields in a copy of the config YAML, and returns the path to the patched
+    temporary file.  When ``extract_bucket`` is ``None`` the original
+    ``config_path`` is returned unchanged.
+
+    Args:
+        config_path: Local or ``gs://`` path to a Lightning CLI config YAML.
+        extract_bucket: GCS URI prefix containing ``extract_*.h5ad`` shards,
+            e.g. ``gs://my-bucket/my-prefix``.
+
+    Returns:
+        Path to a (possibly modified) config YAML file.
+    """
+    if extract_bucket is None:
+        return config_path
+
+    import re as _re
+    import tempfile
+
+    import h5py
+    from ruamel.yaml import YAML
+
+    fs = gcsfs.GCSFileSystem()
+    prefix = extract_bucket.rstrip("/")
+    matched = fs.glob(f"{prefix}/extract_*.h5ad")
+    if not matched:
+        raise FileNotFoundError(f"No extract_*.h5ad files found under {prefix}")
+
+    def _shard_index(p: str) -> int:
+        m = _re.search(r"extract_(\d+)\.h5ad$", p)
+        return int(m.group(1)) if m else -1
+
+    matched = sorted(matched, key=_shard_index)
+    last_idx = _shard_index(matched[-1])
+    filenames = f"{prefix}/extract_{{0..{last_idx}}}.h5ad"
+
+    def _obs_count(gcs_path: str) -> int:
+        with fs.open(gcs_path, "rb") as raw:
+            with h5py.File(raw, "r") as h5f:
+                obs = h5f["obs"]
+                idx_col = obs.attrs.get("_index", None)
+                if idx_col is not None:
+                    if isinstance(idx_col, bytes):
+                        idx_col = idx_col.decode()
+                    if idx_col in obs:
+                        return len(obs[idx_col])
+                x = h5f["X"]
+                if isinstance(x, h5py.Group) and "indptr" in x:
+                    return len(x["indptr"]) - 1
+                return x.shape[0]
+
+    shard_size = _obs_count(matched[0])
+    last_shard_size = _obs_count(matched[-1])
+
+    print(f" Found {len(matched)} shards under {prefix}")
+    print(f" shard_size (from first file): {shard_size}")
+    print(f" last_shard_size (from last file): {last_shard_size}")
+    print(f" filenames: {filenames}")
+
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    if config_path.startswith("gs://"):
+        with fs.open(config_path, "r") as f:
+            doc = yaml.load(f)
+    else:
+        with open(config_path, "r") as f:
+            doc = yaml.load(f)
+
+    try:
+        dadc_args = doc["data"]["dadc"]["init_args"]
+    except KeyError as exc:
+        raise KeyError(
+            f"Config {config_path!r} is missing expected key {exc}. "
+            "Expected structure: data.dadc.init_args"
+        ) from exc
+
+    dadc_args["filenames"] = filenames
+    dadc_args["shard_size"] = shard_size
+    dadc_args["last_shard_size"] = last_shard_size
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False, prefix="cellarium_config_"
+    )
+    yaml.dump(doc, tmp)
+    tmp.close()
+
+    print(f" Patched config written to: {tmp.name}")
+    return tmp.name
 
 
 def get_machine_type_resources(machine_type: str) -> tuple[int, int]:

@@ -1,7 +1,7 @@
 """Run a single component cellarium-ml job locally. Useful for testing."""
 
 import click
-from .shared_components import create_train_op_function
+from .shared_components import create_train_op_function, prepare_config_with_overrides
 
 
 @click.command(short_help="Run a single-component cellarium-ml job locally.")
@@ -33,12 +33,18 @@ from .shared_components import create_train_op_function
     type=str,
     help="Cellarium-ML git SHA to install (if provided).",
 )
+@click.option(
+    "--extract-bucket",
+    default=None,
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+)
 def run_local_single_component(
     tool: str,
     subcommand: str,
     config: str,
     copy_data_to_local_disk: bool,
     git_sha: str,
+    extract_bucket=None,
 ):
     """
     Run a single component cellarium-ml job locally without Vertex AI.
@@ -49,6 +55,8 @@ def run_local_single_component(
     print(f"Config: {config}")
     print(f"Git SHA: {git_sha}")
     print(f"Copy data to local disk: {copy_data_to_local_disk}")
+
+    config = prepare_config_with_overrides(config, extract_bucket)
 
     # Create and run the train operation locally
     train_op = create_train_op_function(copy_data_to_local_disk=copy_data_to_local_disk)

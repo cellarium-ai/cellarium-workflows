@@ -14,6 +14,7 @@ from .shared_components import (
     create_batch_script,
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
+    prepare_config_with_overrides,
     mount_path,
 )
 
@@ -356,6 +357,11 @@ def create_batch_pipeline_jobs(
     type=int,
     help="Size of Local SSD in GB (375, 750, 1125, etc.). Set to 0 to disable Local SSD and use boot disk only.",
 )
+@click.option(
+    "--extract-bucket",
+    default=None,
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+)
 def submit_batch_pipeline(
     project: str,
     location: str,
@@ -372,6 +378,7 @@ def submit_batch_pipeline(
     capture_logs_to_gcs: bool,
     mount_gcs_bucket: bool,
     local_ssd_size_gb: int,
+    extract_bucket=None,
 ):
     """
     Submit a multi-component cellarium-ml pipeline to Google Cloud Batch.
@@ -382,6 +389,13 @@ def submit_batch_pipeline(
     """
     # Parse the pipeline configuration
     display_name, component_definitions = parse_pipeline_yaml(config)
+
+    # Apply extract_bucket overrides to each component's config
+    if extract_bucket is not None:
+        for component in component_definitions:
+            component["config"] = prepare_config_with_overrides(
+                component["config"], extract_bucket
+            )
 
     # Set pipeline name
     if pipeline_name == "":

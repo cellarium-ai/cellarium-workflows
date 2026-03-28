@@ -13,6 +13,7 @@ from .shared_components import (
     create_batch_script,
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
+    prepare_config_with_overrides,
     mount_path,
 )
 
@@ -372,6 +373,11 @@ def create_batch_job_spec(
     default="",
     help="Subnet name or full resource URL. Defaults to the network name (valid for AUTO-mode VPCs).",
 )
+@click.option(
+    "--extract-bucket",
+    default=None,
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+)
 def submit_batch_component(
     project: str,
     location: str,
@@ -392,6 +398,7 @@ def submit_batch_component(
     dry_run: bool = False,
     network: str = "default-vpc",
     subnetwork: str = "",
+    extract_bucket=None,
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -422,6 +429,8 @@ def submit_batch_component(
 
     if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
         git_sha = base_image.split(":")[-1]
+
+    config = prepare_config_with_overrides(config, extract_bucket)
 
     # Validate tool name
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"

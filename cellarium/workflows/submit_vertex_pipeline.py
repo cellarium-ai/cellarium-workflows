@@ -13,6 +13,7 @@ from .shared_components import (
     get_allowed_cli_tool_names,
     get_train_op_code,
     create_vertex_ai_train_op_component,
+    prepare_config_with_overrides,
 )
 
 
@@ -81,6 +82,11 @@ def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
     default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
     help="Base image for the component.",
 )
+@click.option(
+    "--extract-bucket",
+    default=None,
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+)
 def submit_sequential_pipeline(
     project: str,
     location: str,
@@ -88,6 +94,7 @@ def submit_sequential_pipeline(
     pipeline_name: str,
     copy_data_to_local_disk: bool,
     base_image: str,
+    extract_bucket=None,
 ):
     """
     Submit a pipeline of sequential cellarium-ml tools to Vertex AI Pipelines.
@@ -115,6 +122,13 @@ def submit_sequential_pipeline(
     """
     # parse pipeline config
     display_name, component_definitions = parse_pipeline_yaml(pipeline_config)
+
+    # Apply extract_bucket overrides to each component's config
+    if extract_bucket is not None:
+        for component in component_definitions:
+            component["config"] = prepare_config_with_overrides(
+                component["config"], extract_bucket
+            )
 
     # input validation and defaults
     if pipeline_name == "":

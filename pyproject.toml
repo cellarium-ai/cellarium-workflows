@@ -27,19 +27,15 @@ dependencies = [
     "click==8.1.7",
     "pyjwt==2.9.0",
     "gcsfs",
+    "h5py",
+    "ruamel.yaml",
 ]
 
 [project.optional-dependencies]
-test = [
-    "pytest~=7.3",
-    "coverage~=4.5",
-    "click~=8.0",
-    "mockito>=1.5.0",
-    "parameterized>=0.9.0",
-]
 dev = [
     "tox~=4.6",
     "ruff",
+    "pytest~=7.3",
 ]
 train_op = [
     "gcsfs",

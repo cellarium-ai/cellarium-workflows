@@ -12,6 +12,7 @@ from .shared_components import (
     get_allowed_cli_tool_names,
     get_train_op_code,
     create_vertex_ai_train_op_component,
+    prepare_config_with_overrides,
 )
 
 
@@ -86,6 +87,11 @@ from .shared_components import (
     default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
     help="Base image for the component.",
 )
+@click.option(
+    "--extract-bucket",
+    default=None,
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+)
 def submit_single_component_pipeline(
     project: str,
     location: str,
@@ -100,6 +106,7 @@ def submit_single_component_pipeline(
     accelerator_count: int,
     git_sha: str,
     base_image: str,
+    extract_bucket=None,
 ):
     """
     Submit a single component cellarium-ml pipeline to Vertex AI Pipelines.
@@ -114,6 +121,7 @@ def submit_single_component_pipeline(
             pipeline_name = display_name
     if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
         git_sha = base_image.split(":")[-1]
+    config = prepare_config_with_overrides(config, extract_bucket)
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
     cli_tool_names = get_allowed_cli_tool_names(url)
     if cli_tool_names is not None:
