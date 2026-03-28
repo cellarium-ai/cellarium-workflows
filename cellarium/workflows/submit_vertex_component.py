@@ -135,7 +135,7 @@ def submit_single_component_pipeline(
 
     # Create the train_op component using our dynamic creator
     train_op = create_vertex_ai_train_op_component(base_image)
-    
+
     # Get the train_op code that will be passed as a parameter
     train_op_code = get_train_op_code(copy_data_to_local_disk)
 

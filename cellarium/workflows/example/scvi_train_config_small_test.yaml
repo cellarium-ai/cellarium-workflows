@@ -22,7 +22,6 @@ trainer:
       leave: true
   - class_path: lightning.pytorch.callbacks.ModelCheckpoint
     init_args:
-      every_n_epochs: 1
       save_last: true  # Always save the last checkpoint
       save_on_train_epoch_end: true  # Save at end of each epoch
       every_n_epochs: 1

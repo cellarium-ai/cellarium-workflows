@@ -38,7 +38,7 @@ def create_batch_job_spec(
 ) -> batch_v1.Job:
     """
     Create a Google Cloud Batch job specification.
-    
+
     Args:
         job_name: Name of the batch job
         project: Google Cloud project ID
@@ -57,11 +57,11 @@ def create_batch_job_spec(
         output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
         mount_gcs_bucket: Whether to mount the GCS bucket as a volume (if False, outputs will be uploaded via gcsfs)
         local_ssd_size_gb: Size of Local SSD in GB (set to 0 to disable)
-    
+
     Returns:
         Google Cloud Batch job specification
     """
-    
+
     # Create the batch script using the shared function
     batch_script = create_batch_script(
         tool=tool,
@@ -85,42 +85,44 @@ def create_batch_job_spec(
 
     # Define the task specification
     task_spec = batch_v1.TaskSpec()
-    
+
     # Configure the container runnable
     container = batch_v1.Runnable.Container()
     container.image_uri = base_image
     container.commands = ["/bin/bash", "-c", batch_script]
-    
+
     # Configure shared memory for PyTorch DataLoader workers
     # This prevents "Bus error" when using multiple workers
-    container.options = "--shm-size=4g"  # Increased from 2g for more workers/prefetching
-    print(f"🧠 Configured container with shared memory size: 4GB")
-    
+    container.options = (
+        "--shm-size=4g"  # Increased from 2g for more workers/prefetching
+    )
+    print(" Configured container with shared memory size: 4GB")
+
     # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
     if accelerator_count > 0:
-        print(f"🔧 GPU access will be automatically configured by Google Cloud Batch")
-    
+        print(" GPU access will be automatically configured by Google Cloud Batch")
+
     runnable = batch_v1.Runnable()
     runnable.container = container
-    
+
     # Set environment variables on the runnable
     runnable.environment = batch_v1.Environment()
     for key, value in env_vars.items():
         runnable.environment.variables[key] = value
-    
+
     task_spec.runnables = [runnable]
-    
+
     # Add GCS volume mounting if output bucket is specified AND mounting is enabled
     task_volumes = []
-    
+
     if output_gcs_bucket and mount_gcs_bucket:
-        print(f"🗂️  Mounting GCS bucket as volume: {output_gcs_bucket} -> {mount_path}")
+        print(f" Mounting GCS bucket as volume: {output_gcs_bucket} -> {mount_path}")
 
         # Create a GCS volume
         gcs_bucket = batch_v1.GCS()
         # Strip gs:// prefix if present - Google Batch expects just bucket/path
-        remote_path = output_gcs_bucket.rstrip('/')
-        if remote_path.startswith('gs://'):
+        remote_path = output_gcs_bucket.rstrip("/")
+        if remote_path.startswith("gs://"):
             remote_path = remote_path[5:]  # Remove 'gs://' prefix
         gcs_bucket.remote_path = remote_path
         gcs_volume = batch_v1.Volume()
@@ -128,66 +130,72 @@ def create_batch_job_spec(
         gcs_volume.mount_path = mount_path
         task_volumes.append(gcs_volume)
 
-        print(f"✅ GCS volume configured for direct output writing (remote_path: {remote_path})")
+        print(
+            f" GCS volume configured for direct output writing (remote_path: {remote_path})"
+        )
     elif output_gcs_bucket and not mount_gcs_bucket:
-        print(f"📤 GCS bucket detected but volume mounting disabled: {output_gcs_bucket}")
-        print(f"   Outputs will be uploaded via gcsfs at job completion")
+        print(f" GCS bucket detected but volume mounting disabled: {output_gcs_bucket}")
+        print(" Outputs will be uploaded via gcsfs at job completion")
     else:
-        print("📁 No output GCS bucket specified, using local storage")
-    
+        print(" No output GCS bucket specified, using local storage")
+
     # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd
     # when attached via allocation policy - no volume configuration needed
     if local_ssd_size_gb > 0:
-        print(f"💾 Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)")
+        print(
+            f" Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)"
+        )
     else:
-        print("💾 Local SSD disabled, using boot disk only")
-    
+        print(" Local SSD disabled, using boot disk only")
+
     # Set volumes on task spec
     if task_volumes:
         task_spec.volumes = task_volumes
-    
+
     # Set compute resources based on machine type
     cpu_milli, memory_mib = get_machine_type_resources(machine_type)
     compute_resource = batch_v1.ComputeResource()
     compute_resource.cpu_milli = cpu_milli
     compute_resource.memory_mib = memory_mib
     task_spec.compute_resource = compute_resource
-    
+
     # Set maximum run duration
     task_spec.max_run_duration = {"seconds": int(max_run_duration.rstrip("s"))}
-    
+
     # Create task groups
     group = batch_v1.TaskGroup()
     group.task_count = 1
     group.task_spec = task_spec
-    
+
     # Create allocation policy for machine type
     allocation_policy = batch_v1.AllocationPolicy()
     instance_policy = batch_v1.AllocationPolicy.InstancePolicy()
     instance_policy.machine_type = machine_type
-    
+
     # Add GPU to instance policy if specified
     if accelerator_count > 0 and accelerator_type:
-        print(f"🔧 GPU Configuration:")
-        print(f"   Type: {accelerator_type}")
-        print(f"   Count: {accelerator_count}")
-        print(f"   Formatted type: {accelerator_type.lower().replace('_', '-')}")
-        
+        print(" GPU Configuration:")
+        print(f" Type: {accelerator_type}")
+        print(f" Count: {accelerator_count}")
+        print(f" Formatted type: {accelerator_type.lower().replace('_', '-')}")
+
         # For Batch, GPUs are configured via accelerators in the instance policy
         accelerator = batch_v1.AllocationPolicy.Accelerator()
-        accelerator.type_ = accelerator_type.lower().replace('_', '-')
+        accelerator.type_ = accelerator_type.lower().replace("_", "-")
         accelerator.count = accelerator_count
         instance_policy.accelerators = [accelerator]
-        
-        print(f"✅ Added GPU to job specification")
+
+        print(" Added GPU to job specification")
     else:
-        print(f"❌ No GPU configured (count: {accelerator_count}, type: '{accelerator_type}')")
-    
+        print(
+            f" No GPU configured (count: {accelerator_count}, type: '{accelerator_type}')"
+        )
+
     instance_policy_or_template = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
     instance_policy_or_template.policy = instance_policy
     if accelerator_count > 0 and accelerator_type:
         instance_policy_or_template.install_gpu_drivers = True
-    
+
     # Add Local SSD configuration
     if local_ssd_size_gb > 0:
         attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
@@ -196,15 +204,15 @@ def create_batch_job_spec(
         attached_disk.new_disk.size_gb = local_ssd_size_gb
         attached_disk.device_name = "local-ssd"
         instance_policy.disks = [attached_disk]
-    
+
     allocation_policy.instances = [instance_policy_or_template]
-    
+
     # Create the job
     job = batch_v1.Job()
     job.task_groups = [group]
     job.allocation_policy = allocation_policy
     job.logs_policy = batch_v1.LogsPolicy()
-    
+
     # Set log destination based on capture_logs_to_gcs setting
     if capture_logs_to_gcs:
         # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
@@ -212,19 +220,25 @@ def create_batch_job_spec(
         if output_gcs_bucket and mount_gcs_bucket:
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
             job.logs_policy.logs_path = f"{mount_path}/job_logs"
-            print("📝 Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)")
+            print(
+                " Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)"
+            )
         elif local_ssd_size_gb > 0:
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
             job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
-            print("📝 Logs will be saved to Local SSD and synced to GCS (Cloud Logging disabled to save costs)")
+            print(
+                " Logs will be saved to Local SSD and synced to GCS (Cloud Logging disabled to save costs)"
+            )
         else:
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
-            print("⚠️  capture_logs_to_gcs requested but no mounted GCS bucket and local_ssd_size_gb=0; falling back to Cloud Logging")
+            print(
+                " capture_logs_to_gcs requested but no mounted GCS bucket and local_ssd_size_gb=0; falling back to Cloud Logging"
+            )
     else:
         # Default behavior - all logs go to Cloud Logging
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
-        print("📝 Logs will be sent to Cloud Logging")
-    
+        print(" Logs will be sent to Cloud Logging")
+
     return job
 
 
@@ -348,7 +362,7 @@ def submit_batch_component(
     if job_name == "":
         user = get_current_google_user()
         base_name = f"{user}-{tool}-{subcommand}" if user else f"{tool}-{subcommand}"
-        
+
         # Add timestamp and short UUID to ensure uniqueness
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         short_uuid = str(uuid.uuid4())[:8]
@@ -358,17 +372,19 @@ def submit_batch_component(
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         short_uuid = str(uuid.uuid4())[:8]
         job_name = f"{job_name}-{timestamp}-{short_uuid}"
-    
+
     # Ensure job name is valid for Batch (lowercase, hyphens only, max 63 chars)
     job_name = job_name.lower().replace("_", "-")
     job_name = job_name[:63].rstrip("-")
 
-    if not re.match(r'^\d+s$', max_run_duration):
-        raise ValueError(f"max_run_duration must be in '<seconds>s' format, e.g. '3600s'. Got: '{max_run_duration}'")
+    if not re.match(r"^\d+s$", max_run_duration):
+        raise ValueError(
+            f"max_run_duration must be in '<seconds>s' format, e.g. '3600s'. Got: '{max_run_duration}'"
+        )
 
     if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
         git_sha = base_image.split(":")[-1]
-    
+
     # Validate tool name
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
     cli_tool_names = get_allowed_cli_tool_names(url)
@@ -378,19 +394,19 @@ def submit_batch_component(
                 f"Tool '{tool}' not found in allowed CLI tools at {url}.\n"
                 f"Allowed tool names:\n{cli_tool_names}"
             )
-    
+
     # Auto-detect output GCS bucket from config file
     output_gcs_bucket = extract_output_gcs_bucket_from_config(config)
     if output_gcs_bucket:
-        print(f"🗂️  Auto-detected output GCS bucket from config: {output_gcs_bucket}")
+        print(f" Auto-detected output GCS bucket from config: {output_gcs_bucket}")
     else:
-        print("📁 No GCS output bucket detected, using local storage only")
-    
+        print(" No GCS output bucket detected, using local storage only")
+
     # Handle GPU settings
     if accelerator_count == 0:
         accelerator_type = ""
         accelerator_count = 0
-    
+
     print(f"Submitting job '{job_name}' to Google Cloud Batch...")
     print(f"Project: {project}")
     print(f"Location: {location}")
@@ -398,11 +414,15 @@ def submit_batch_component(
     print(f"Subcommand: {subcommand}")
     print(f"Config: {config}")
     print(f"Machine type: {machine_type}")
-    print(f"Accelerator: {accelerator_count}x {accelerator_type}" if accelerator_count > 0 else "No accelerator")
+    print(
+        f"Accelerator: {accelerator_count}x {accelerator_type}"
+        if accelerator_count > 0
+        else "No accelerator"
+    )
     print(f"Max runtime: {max_run_duration}")
     print(f"Mount GCS bucket: {mount_gcs_bucket}")
     print(f"Local SSD size: {local_ssd_size_gb}GB")
-    
+
     # Create the batch job specification
     job_spec = create_batch_job_spec(
         job_name=job_name,
@@ -423,39 +443,43 @@ def submit_batch_component(
         mount_gcs_bucket=mount_gcs_bucket,
         local_ssd_size_gb=local_ssd_size_gb,
     )
-    
+
     # Dry-run: validate and print job spec without submitting
     if dry_run:
-        print("🔍 Dry run: job spec built successfully, skipping submission.")
+        print(" Dry run: job spec built successfully, skipping submission.")
         print(job_spec)
         return
 
     # Submit the job
     client = batch_v1.BatchServiceClient()
     parent = f"projects/{project}/locations/{location}"
-    
+
     try:
         request = batch_v1.CreateJobRequest()
         request.parent = parent
         request.job_id = job_name
         request.job = job_spec
-        
+
         result = client.create_job(request=request)
-        print(f"✅ Job '{job_name}' submitted successfully!")
+        print(f" Job '{job_name}' submitted successfully!")
         print(f"Job resource name: {result.name}")
         print(f"Job UID: {result.uid}")
         print(f"Job state: {result.status.state.name}")
-        
+
         # Print monitoring information
         print("\nMonitoring commands:")
-        print(f"  gcloud batch jobs describe {job_name} --location={location} --project={project}")
-        print(f"  gcloud batch jobs list --location={location} --project={project}")
-        print(f"  gcloud logging read 'resource.type=\"gce_instance\" AND resource.labels.job_id=\"{job_name}\"' --project={project}")
-        
+        print(
+            f" gcloud batch jobs describe {job_name} --location={location} --project={project}"
+        )
+        print(f" gcloud batch jobs list --location={location} --project={project}")
+        print(
+            f' gcloud logging read \'resource.type="gce_instance" AND resource.labels.job_id="{job_name}"\' --project={project}'
+        )
+
         return result
-        
+
     except Exception as e:
-        print(f"❌ Failed to submit job: {e}")
+        print(f" Failed to submit job: {e}")
         raise
 
 

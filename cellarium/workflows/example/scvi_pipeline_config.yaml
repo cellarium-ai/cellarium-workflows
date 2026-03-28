@@ -1,0 +1,8 @@
+scvi_cpu_vanilla_with_full_latent_batch:
+  - tool: scvi
+    subcommand: fit
+    config: gs://cellarium-human-primary-data/curriculum/human_all_primary_20241108/configs/20241127_scvi_train_config.yaml
+    machine_type: n1-standard-16
+    # accelerator_type: NVIDIA_TESLA_T4
+    accelerator_count: 0
+    git_sha: c14705370d2a7a805286fa3dd0e4795c10e6cefd

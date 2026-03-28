@@ -42,17 +42,17 @@ def run_local_single_component(
 ):
     """
     Run a single component cellarium-ml job locally without Vertex AI.
-    
+
     This is useful for testing and development before submitting to Vertex AI.
     """
     print(f"Running {tool} {subcommand} locally...")
     print(f"Config: {config}")
     print(f"Git SHA: {git_sha}")
     print(f"Copy data to local disk: {copy_data_to_local_disk}")
-    
+
     # Create and run the train operation locally
     train_op = create_train_op_function(copy_data_to_local_disk=copy_data_to_local_disk)
-    
+
     try:
         train_op(
             tool=tool,

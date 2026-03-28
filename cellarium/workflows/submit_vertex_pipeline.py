@@ -20,34 +20,36 @@ def parse_pipeline_yaml(config: str) -> tuple[str, list[dict]]:
     with open(config) as f:
         config_contents = yaml.safe_load(f)
     top_level_keys = list(config_contents.keys())
-    assert (
-        len(top_level_keys) == 1
-    ), "Pipeline YAML config error: The top level of the config file must be the display_name of the pipeline. Only one top level key is allowed."
+    assert len(top_level_keys) == 1, (
+        "Pipeline YAML config error: The top level of the config file must be the display_name of the pipeline. Only one top level key is allowed."
+    )
     display_name = list(config_contents.keys())[0]
     component_definitions = config_contents[display_name]
-    assert isinstance(
-        component_definitions, list
-    ), "Pipeline YAML config error: The value of the top level key must be a list of component definition dictionaries."
+    assert isinstance(component_definitions, list), (
+        "Pipeline YAML config error: The value of the top level key must be a list of component definition dictionaries."
+    )
     for item in component_definitions:
-        assert isinstance(
-            item, dict
-        ), "Pipeline YAML config error: Each component definition in the list must be a dictionary."
-        assert (
-            "tool" in item
-        ), "Pipeline YAML config error: Each component definition must have a 'tool' key."
-        assert (
-            "subcommand" in item
-        ), "Pipeline YAML config error: Each component definition must have a 'subcommand' key."
-        assert (
-            item["subcommand"] in ["fit", "predict"]
-        ), "Pipeline YAML config error: The 'subcommand' key's value must be either 'fit' or 'predict'."
-        assert (
-            "config" in item
-        ), "Pipeline YAML config error: Each component definition must have a 'config' key."
+        assert isinstance(item, dict), (
+            "Pipeline YAML config error: Each component definition in the list must be a dictionary."
+        )
+        assert "tool" in item, (
+            "Pipeline YAML config error: Each component definition must have a 'tool' key."
+        )
+        assert "subcommand" in item, (
+            "Pipeline YAML config error: Each component definition must have a 'subcommand' key."
+        )
+        assert item["subcommand"] in ["fit", "predict"], (
+            "Pipeline YAML config error: The 'subcommand' key's value must be either 'fit' or 'predict'."
+        )
+        assert "config" in item, (
+            "Pipeline YAML config error: Each component definition must have a 'config' key."
+        )
     return display_name, component_definitions
 
 
-@click.command(short_help="Submit a multi-step sequential pipeline to Vertex AI Pipelines.")
+@click.command(
+    short_help="Submit a multi-step sequential pipeline to Vertex AI Pipelines."
+)
 @click.option(
     "--pipeline-config",
     required=True,
@@ -154,7 +156,7 @@ def submit_sequential_pipeline(
 
     # Create the train_op component using our dynamic creator
     train_op = create_vertex_ai_train_op_component(base_image)
-    
+
     # Get the train_op code that will be passed as a parameter
     train_op_code = get_train_op_code(copy_data_to_local_disk)
 
