@@ -1,16 +1,13 @@
 """Submit a single component cellarium-ml job to Google Cloud Batch."""
 
-import tempfile
-import json
+import re
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 import click
 from google.cloud import batch_v1
-from google.cloud import storage
 
-from shared_components import (
+from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
@@ -59,6 +56,7 @@ def create_batch_job_spec(
         capture_logs_to_gcs: Capture stdout/stderr to files for GCS sync
         output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
         mount_gcs_bucket: Whether to mount the GCS bucket as a volume (if False, outputs will be uploaded via gcsfs)
+        local_ssd_size_gb: Size of Local SSD in GB (set to 0 to disable)
     
     Returns:
         Google Cloud Batch job specification
@@ -137,9 +135,12 @@ def create_batch_job_spec(
     else:
         print("📁 No output GCS bucket specified, using local storage")
     
-    # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd 
+    # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd
     # when attached via allocation policy - no volume configuration needed
-    print(f"💾 Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)")
+    if local_ssd_size_gb > 0:
+        print(f"💾 Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)")
+    else:
+        print("💾 Local SSD disabled, using boot disk only")
     
     # Set volumes on task spec
     if task_volumes:
@@ -188,12 +189,13 @@ def create_batch_job_spec(
         instance_policy_or_template.install_gpu_drivers = True
     
     # Add Local SSD configuration
-    attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
-    attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
-    attached_disk.new_disk.type_ = "local-ssd"
-    attached_disk.new_disk.size_gb = local_ssd_size_gb
-    attached_disk.device_name = "local-ssd"
-    instance_policy.disks = [attached_disk]
+    if local_ssd_size_gb > 0:
+        attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
+        attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
+        attached_disk.new_disk.type_ = "local-ssd"
+        attached_disk.new_disk.size_gb = local_ssd_size_gb
+        attached_disk.device_name = "local-ssd"
+        instance_policy.disks = [attached_disk]
     
     allocation_policy.instances = [instance_policy_or_template]
     
@@ -207,13 +209,17 @@ def create_batch_job_spec(
     if capture_logs_to_gcs:
         # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
         # This significantly reduces Cloud Logging costs while still preserving logs in GCS
-        job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
         if output_gcs_bucket and mount_gcs_bucket:
+            job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
             job.logs_policy.logs_path = f"{mount_path}/job_logs"
             print("📝 Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)")
-        else:
+        elif local_ssd_size_gb > 0:
+            job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
             job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
             print("📝 Logs will be saved to Local SSD and synced to GCS (Cloud Logging disabled to save costs)")
+        else:
+            job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
+            print("⚠️  capture_logs_to_gcs requested but no mounted GCS bucket and local_ssd_size_gb=0; falling back to Cloud Logging")
     else:
         # Default behavior - all logs go to Cloud Logging
         job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -346,9 +352,13 @@ def submit_batch_component(
         short_uuid = str(uuid.uuid4())[:8]
         job_name = f"{job_name}-{timestamp}-{short_uuid}"
     
-    # Ensure job name is valid for Batch (lowercase, hyphens only)
+    # Ensure job name is valid for Batch (lowercase, hyphens only, max 63 chars)
     job_name = job_name.lower().replace("_", "-")
-    
+    job_name = job_name[:63].rstrip("-")
+
+    if not re.match(r'^\d+s$', max_run_duration):
+        raise ValueError(f"max_run_duration must be in '<seconds>s' format, e.g. '3600s'. Got: '{max_run_duration}'")
+
     if (git_sha == "") and (len(base_image.split(":")[-1]) > 0):
         git_sha = base_image.split(":")[-1]
     
@@ -417,33 +427,11 @@ def submit_batch_component(
         request.job_id = job_name
         request.job = job_spec
         
-        operation = client.create_job(request=request)
-        print(f"Job creation operation: {operation.name}")
-        
-        # Wait for the operation to complete
-        print("Waiting for job creation to complete...")
-        try:
-            result = operation.result()
-            print(f"✅ Job '{job_name}' submitted successfully!")
-            print(f"Job resource name: {result.name}")
-            print(f"Job UID: {result.uid}")
-            print(f"Job state: {result.status.state.name}")
-        except AttributeError:
-            # Handle case where operation.result() doesn't work as expected
-            # The operation itself contains the job information
-            result = operation
-            print(f"✅ Job '{job_name}' submitted successfully!")
-            print(f"Operation name: {operation.name}")
-            
-            # Try to get the job details directly
-            try:
-                job_resource = client.get_job(name=f"projects/{project}/locations/{location}/jobs/{job_name}")
-                print(f"Job resource name: {job_resource.name}")
-                print(f"Job UID: {job_resource.uid}")
-                print(f"Job state: {job_resource.status.state.name}")
-                result = job_resource
-            except Exception as e:
-                print(f"Note: Could not fetch job details immediately: {e}")
+        result = client.create_job(request=request)
+        print(f"✅ Job '{job_name}' submitted successfully!")
+        print(f"Job resource name: {result.name}")
+        print(f"Job UID: {result.uid}")
+        print(f"Job state: {result.status.state.name}")
         
         # Print monitoring information
         print("\nMonitoring commands:")
