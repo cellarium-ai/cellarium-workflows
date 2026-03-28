@@ -35,6 +35,8 @@ def create_batch_job_spec(
     output_gcs_bucket: str = None,
     mount_gcs_bucket: bool = True,
     local_ssd_size_gb: int = 375,
+    network: str = "default-vpc",
+    subnetwork: str = "",
 ) -> batch_v1.Job:
     """
     Create a Google Cloud Batch job specification.
@@ -57,6 +59,8 @@ def create_batch_job_spec(
         output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
         mount_gcs_bucket: Whether to mount the GCS bucket as a volume (if False, outputs will be uploaded via gcsfs)
         local_ssd_size_gb: Size of Local SSD in GB (set to 0 to disable)
+        network: VPC network name or full resource URL
+        subnetwork: Subnet name or full resource URL (defaults to same name as network for AUTO-mode VPCs)
 
     Returns:
         Google Cloud Batch job specification
@@ -207,7 +211,29 @@ def create_batch_job_spec(
 
     allocation_policy.instances = [instance_policy_or_template]
 
-    # Create the job
+    # Configure VPC network
+    if network:
+        # Build full resource URLs if short names were given
+        net_url = (
+            network
+            if "/" in network
+            else f"projects/{project}/global/networks/{network}"
+        )
+        # For AUTO-mode VPCs the subnet name matches the network name
+        resolved_subnet = subnetwork or network
+        sub_url = (
+            resolved_subnet
+            if "/" in resolved_subnet
+            else f"projects/{project}/regions/{location}/subnetworks/{resolved_subnet}"
+        )
+        network_interface = batch_v1.AllocationPolicy.NetworkInterface()
+        network_interface.network = net_url
+        network_interface.subnetwork = sub_url
+        network_policy = batch_v1.AllocationPolicy.NetworkPolicy()
+        network_policy.network_interfaces = [network_interface]
+        allocation_policy.network = network_policy
+        print(f" Network: {net_url}")
+        print(f" Subnetwork: {sub_url}")
     job = batch_v1.Job()
     job.task_groups = [group]
     job.allocation_policy = allocation_policy
@@ -267,7 +293,7 @@ def create_batch_job_spec(
 )
 @click.option(
     "--project",
-    default="dsp-cell-annotation-service",
+    default="dsp-cellarium",
     help="Google Cloud project ID.",
 )
 @click.option(
@@ -336,6 +362,16 @@ def create_batch_job_spec(
     is_flag=True,
     help="Build and validate the job spec without submitting to Google Cloud Batch.",
 )
+@click.option(
+    "--network",
+    default="default-vpc",
+    help="VPC network name or full resource URL. Defaults to 'default-vpc'.",
+)
+@click.option(
+    "--subnetwork",
+    default="",
+    help="Subnet name or full resource URL. Defaults to the network name (valid for AUTO-mode VPCs).",
+)
 def submit_batch_component(
     project: str,
     location: str,
@@ -354,6 +390,8 @@ def submit_batch_component(
     mount_gcs_bucket: bool,
     local_ssd_size_gb: int,
     dry_run: bool = False,
+    network: str = "default-vpc",
+    subnetwork: str = "",
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -442,6 +480,8 @@ def submit_batch_component(
         output_gcs_bucket=output_gcs_bucket,
         mount_gcs_bucket=mount_gcs_bucket,
         local_ssd_size_gb=local_ssd_size_gb,
+        network=network,
+        subnetwork=subnetwork,
     )
 
     # Dry-run: validate and print job spec without submitting
@@ -474,6 +514,9 @@ def submit_batch_component(
         print(f" gcloud batch jobs list --location={location} --project={project}")
         print(
             f' gcloud logging read \'resource.type="gce_instance" AND resource.labels.job_id="{job_name}"\' --project={project}'
+        )
+        print(
+            f"\nConsole URL:\n https://console.cloud.google.com/batch/jobs?project={project}"
         )
 
         return result
