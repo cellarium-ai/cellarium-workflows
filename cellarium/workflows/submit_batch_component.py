@@ -353,9 +353,9 @@ def create_batch_job_spec(
 )
 @click.option(
     "--local-ssd-size-gb",
-    default=375,
+    default=750,
     type=int,
-    help="Size of Local SSD in GB (375, 750, 1125, etc.). Set to 0 to disable Local SSD and use boot disk only.",
+    help="Size of Local SSD in GB in 375 increments (375, 750, 1125, etc.). Set to 0 to disable Local SSD.",
 )
 @click.option(
     "--dry-run",
@@ -365,8 +365,8 @@ def create_batch_job_spec(
 )
 @click.option(
     "--network",
-    default="default-vpc",
-    help="VPC network name or full resource URL. Defaults to 'default-vpc'.",
+    default="default",
+    help="VPC network name or full resource URL. Defaults to 'default'.",
 )
 @click.option(
     "--subnetwork",
@@ -376,7 +376,12 @@ def create_batch_job_spec(
 @click.option(
     "--extract-bucket",
     default=None,
-    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix.",
+    help="GCS URI prefix containing extract_*.h5ad files, e.g. gs://my-bucket/my-prefix. Overwrites config yaml paths.",
+)
+@click.option(
+    "--staging-bucket",
+    default=None,
+    help="GCS URI prefix for staging local config files, e.g. gs://my-bucket/staging. Required when config is a local path and the config has no gs:// default_root_dir.",
 )
 def submit_batch_component(
     project: str,
@@ -399,6 +404,7 @@ def submit_batch_component(
     network: str = "default-vpc",
     subnetwork: str = "",
     extract_bucket=None,
+    staging_bucket=None,
 ):
     """
     Submit a single component cellarium-ml job to Google Cloud Batch.
@@ -432,6 +438,29 @@ def submit_batch_component(
 
     config = prepare_config_with_overrides(config, extract_bucket)
 
+    # Auto-detect output GCS bucket from config (done early so it can be used for local config staging)
+    output_gcs_bucket = extract_output_gcs_bucket_from_config(config)
+    if output_gcs_bucket:
+        print(f" Auto-detected output GCS bucket from config: {output_gcs_bucket}")
+    else:
+        print(" No GCS output bucket detected, using local storage only")
+
+    # If config is a local path, upload it to GCS staging so the Batch VM can access it
+    if not config.startswith("gs://"):
+        bucket_for_staging = output_gcs_bucket or staging_bucket
+        if not bucket_for_staging:
+            raise ValueError(
+                "Local config file provided but no GCS bucket is available for staging. "
+                "Either add a gs:// default_root_dir to your config or pass "
+                "--staging-bucket gs://my-bucket/path."
+            )
+        import gcsfs as _gcsfs
+        fs = _gcsfs.GCSFileSystem()
+        staged_config_path = f"{bucket_for_staging.rstrip('/')}/staging/configs/{job_name}.yaml"
+        fs.put(config, staged_config_path)
+        print(f" Uploaded local config to GCS staging: {staged_config_path}")
+        config = staged_config_path
+
     # Validate tool name
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
     cli_tool_names = get_allowed_cli_tool_names(url)
@@ -441,13 +470,6 @@ def submit_batch_component(
                 f"Tool '{tool}' not found in allowed CLI tools at {url}.\n"
                 f"Allowed tool names:\n{cli_tool_names}"
             )
-
-    # Auto-detect output GCS bucket from config file
-    output_gcs_bucket = extract_output_gcs_bucket_from_config(config)
-    if output_gcs_bucket:
-        print(f" Auto-detected output GCS bucket from config: {output_gcs_bucket}")
-    else:
-        print(" No GCS output bucket detected, using local storage only")
 
     # Handle GPU settings
     if accelerator_count == 0:

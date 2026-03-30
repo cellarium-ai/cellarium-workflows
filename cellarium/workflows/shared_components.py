@@ -8,6 +8,20 @@ from typing import Optional
 mount_path = "/mnt/disks/gcs_output"
 
 
+def _assert_gcs_bucket_exists(gcs_path: str) -> None:
+    """Raise an error if the GCS bucket in gcs_path does not exist or is not accessible."""
+    # Extract bucket name from gs://bucket/... or gs://bucket
+    without_scheme = gcs_path[5:]  # strip "gs://"
+    bucket_name = without_scheme.split("/")[0]
+    fs = gcsfs.GCSFileSystem()
+    if not fs.exists(f"gs://{bucket_name}"):
+        raise FileNotFoundError(
+            f" Output GCS bucket does not exist or is not accessible: gs://{bucket_name}\n"
+            f" (from config path: {gcs_path})"
+        )
+    print(f" Output GCS bucket exists: gs://{bucket_name}")
+
+
 def extract_output_gcs_bucket_from_config(config_path: str) -> str:
     """
     Extract the output GCS bucket path from the config file's trainer.default_root_dir.
@@ -44,6 +58,7 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
         # Check if it's a GCS path
         if default_root_dir.startswith("gs://"):
             print(f" Detected GCS output path: {default_root_dir}")
+            _assert_gcs_bucket_exists(default_root_dir)
             return default_root_dir
         elif default_root_dir.startswith("/gcs/"):
             # Convert /gcs/bucket/path format to gs://bucket/path
@@ -54,6 +69,7 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
             else:
                 gcs_url = f"gs://{gcs_path}"
             print(f" Detected GCS output path: {default_root_dir} -> {gcs_url}")
+            _assert_gcs_bucket_exists(gcs_url)
             return gcs_url
         else:
             print(f" Local output path detected: {default_root_dir}")

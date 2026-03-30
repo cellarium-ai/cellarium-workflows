@@ -6,7 +6,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from shared_components import (
+from cellarium.workflows.shared_components import (
     get_pytorch_setup_code,
     get_git_install_code,
     get_data_download_code,

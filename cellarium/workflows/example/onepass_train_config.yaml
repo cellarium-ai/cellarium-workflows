@@ -54,7 +54,7 @@ trainer:
   plugins: null
   sync_batchnorm: false
   reload_dataloaders_every_n_epochs: 0
-  default_root_dir: /gcs/cellarium-human-primary-data/curriculum/human_all_primary_20241108/trained_models/tmp/
+  default_root_dir: /gcs/cellarium-dev-central/workflows/onepass_train_tmp
 model:
   transforms:
     - class_path: cellarium.ml.transforms.NormalizeTotal
@@ -74,7 +74,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: gs://cellarium-human-primary-data/curriculum/human_all_primary_20241108/extract_files/extract_{0..1}.h5ad  # 4440}.h5ad
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_homosapiens20251108_primary_umi_count_gte_300_donor_dataset/extract_files/extract_{0..10}.h5ad  # 4440}.h5ad
       limits: null
       shard_size: 10_000
       # last_shard_size: 6428
