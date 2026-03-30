@@ -78,10 +78,12 @@ if isinstance(data_reference, str):
     if "{" in data_reference and ".." in data_reference:
         pattern = re.search(r"\{(\d+)\.\.(\d+)\}", data_reference)
         if pattern:
-            start, end = map(int, pattern.groups())
+            start_str, end_str = pattern.groups()
+            start, end = int(start_str), int(end_str)
+            width = len(start_str)  # preserve leading zeros (e.g. "000000" -> width 6)
             base_path = data_reference[: pattern.start()]
             suffix = data_reference[pattern.end() :]
-            data_reference = [f"{base_path}{i}{suffix}" for i in range(start, end + 1)]
+            data_reference = [f"{base_path}{str(i).zfill(width)}{suffix}" for i in range(start, end + 1)]
         else:
             data_reference = [data_reference]
     else:

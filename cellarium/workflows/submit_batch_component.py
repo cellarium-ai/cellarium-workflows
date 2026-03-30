@@ -13,6 +13,9 @@ from .shared_components import (
     create_batch_script,
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
+    extract_data_gcs_bucket_from_config,
+    assert_gcs_bucket_accessible_as_service_account,
+    assert_data_first_file_exists,
     prepare_config_with_overrides,
     mount_path,
 )
@@ -330,7 +333,7 @@ def create_batch_job_spec(
 )
 @click.option(
     "--git-sha",
-    default="",
+    default="main",
     type=str,
     help="Cellarium-ML git SHA to install (if provided).",
 )
@@ -460,6 +463,12 @@ def submit_batch_component(
         fs.put(config, staged_config_path)
         print(f" Uploaded local config to GCS staging: {staged_config_path}")
         config = staged_config_path
+
+    # Pre-flight: check that the Batch SA can access the data bucket, and the first file exists
+    data_bucket = extract_data_gcs_bucket_from_config(config)
+    if data_bucket:
+        assert_gcs_bucket_accessible_as_service_account(project, data_bucket)
+        assert_data_first_file_exists(config)
 
     # Validate tool name
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"

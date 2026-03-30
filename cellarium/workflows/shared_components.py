@@ -22,6 +22,173 @@ def _assert_gcs_bucket_exists(gcs_path: str) -> None:
     print(f" Output GCS bucket exists: gs://{bucket_name}")
 
 
+def extract_data_gcs_bucket_from_config(config_path: str) -> str:
+    """
+    Extract the data GCS bucket name from the config file's data.dadc.init_args.filenames.
+
+    Args:
+        config_path: Path to the config YAML file (local or gs://)
+
+    Returns:
+        The GCS bucket name (e.g. 'my-bucket') if found, otherwise an empty string
+    """
+    import re
+
+    try:
+        if config_path.startswith("gs://"):
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(config_path, "r") as f:
+                content = f.read()
+        else:
+            with open(config_path, "r") as f:
+                content = f.read()
+
+        # Find filenames: value under data.dadc.init_args
+        match = re.search(r"^\s*filenames:\s*([^\s\n]+)", content, re.MULTILINE)
+        if not match:
+            print(" No filenames field found in config data section")
+            return ""
+
+        filenames = match.group(1).strip()
+        if not filenames.startswith("gs://"):
+            print(f" Data filenames path is not a GCS path: {filenames}")
+            return ""
+
+        # Extract bucket name — handles brace-expansion paths like
+        # gs://bucket/path/extract_{0..10}.h5ad
+        bucket = filenames[5:].split("/")[0]
+        print(f" Detected data GCS bucket from config: {bucket}")
+        return bucket
+
+    except Exception as e:
+        print(f" Warning: Could not parse config for data bucket: {e}")
+        return ""
+
+
+def assert_gcs_bucket_accessible_as_service_account(project: str, bucket_name: str) -> None:
+    """
+    Verify that the Compute Engine default service account can access a GCS bucket.
+
+    Impersonates the default Compute Engine SA
+    ({project_number}-compute@developer.gserviceaccount.com) and checks bucket
+    existence/access.  If your user account lacks
+    roles/iam.serviceAccountTokenCreator on that SA, falls back to checking with
+    your current credentials and prints a warning.
+
+    Args:
+        project: Google Cloud project ID
+        bucket_name: GCS bucket name (without gs:// prefix)
+
+    Raises:
+        PermissionError: If the bucket is not accessible
+    """
+    import requests
+    from google.auth import default
+    from google.auth.transport.requests import Request
+
+    # --- get project number to build the default SA email ---
+    credentials, _ = default()
+    credentials.refresh(Request())
+    token = credentials.token
+    resp = requests.get(
+        f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    project_number = resp.json()["projectNumber"]
+    sa_email = f"{project_number}-compute@developer.gserviceaccount.com"
+    print(f" Checking data bucket access as Compute Engine SA: {sa_email}")
+
+    # --- try to impersonate the SA and check the bucket ---
+    try:
+        from google.auth import impersonated_credentials
+
+        impersonated = impersonated_credentials.Credentials(
+            source_credentials=credentials,
+            target_principal=sa_email,
+            target_scopes=["https://www.googleapis.com/auth/devstorage.read_only"],
+            lifetime=60,
+        )
+        # Force a token fetch so impersonation errors surface here rather than lazily
+        impersonated.refresh(Request())
+        fs = gcsfs.GCSFileSystem(token=impersonated)
+        accessible = fs.exists(f"gs://{bucket_name}")
+        check_label = f"SA {sa_email}"
+    except Exception as impersonation_err:
+        print(
+            f" WARNING: Could not impersonate SA {sa_email}: {impersonation_err}\n"
+            " (Your account may need roles/iam.serviceAccountTokenCreator on that SA.)\n"
+            " Falling back to checking with your current user credentials — "
+            "this may not reflect actual SA permissions."
+        )
+        fs = gcsfs.GCSFileSystem()
+        accessible = fs.exists(f"gs://{bucket_name}")
+        check_label = "current user"
+
+    if not accessible:
+        raise PermissionError(
+            f" Data bucket 'gs://{bucket_name}' is not accessible to {check_label}.\n"
+            " The Batch job will fail when it tries to read training data.\n"
+            " Fix: grant Storage Object Viewer on gs://{bucket_name} to {sa_email}."
+        )
+    print(f" Data bucket 'gs://{bucket_name}' is accessible to {check_label}.")
+
+
+def assert_data_first_file_exists(config_path: str) -> None:
+    """
+    Check that the first data file referenced in the config's filenames field exists in GCS.
+
+    Resolves brace-expansion patterns (e.g. ``extract_{0..10}.h5ad`` or
+    ``extract_{000000..000010}.h5ad``) to the first concrete filename and verifies
+    it exists, giving a fast-fail check for path typos.
+
+    Args:
+        config_path: Path to the config YAML file (local or gs://)
+
+    Raises:
+        FileNotFoundError: If the first data file does not exist in GCS
+    """
+    import re
+
+    try:
+        if config_path.startswith("gs://"):
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(config_path, "r") as f:
+                content = f.read()
+        else:
+            with open(config_path, "r") as f:
+                content = f.read()
+
+        match = re.search(r"^\s*filenames:\s*([^\s\n]+)", content, re.MULTILINE)
+        if not match:
+            print(" No filenames field found — skipping file existence check")
+            return
+
+        filenames = match.group(1).strip()
+        if not filenames.startswith("gs://"):
+            print(f" Filenames is not a GCS path — skipping file existence check")
+            return
+
+        # Resolve {START..END} brace expansion to START, preserving leading zeros
+        first_file = re.sub(r"\{(\d+)\.\.(\d+)\}", r"\1", filenames)
+
+        print(f" Checking first data file exists: {first_file}")
+        fs = gcsfs.GCSFileSystem()
+        if not fs.exists(first_file):
+            raise FileNotFoundError(
+                f" First data file does not exist: {first_file}\n"
+                f" (from filenames pattern: {filenames})\n"
+                " Check for typos in the filenames path in your config."
+            )
+        print(f" First data file exists: {first_file}")
+
+    except FileNotFoundError:
+        raise
+    except Exception as e:
+        print(f" Warning: Could not check data file existence: {e}")
+
+
 def extract_output_gcs_bucket_from_config(config_path: str) -> str:
     """
     Extract the output GCS bucket path from the config file's trainer.default_root_dir.
