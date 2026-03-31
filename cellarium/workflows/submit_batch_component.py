@@ -19,7 +19,6 @@ from .shared_components import (
     assert_gcs_bucket_accessible_as_service_account,
     assert_data_first_file_exists,
     prepare_config_with_overrides,
-    mount_path,
 )
 
 
@@ -37,10 +36,9 @@ def create_batch_job_spec(
     machine_type: str = "n1-standard-4",
     accelerator_type: str = "nvidia-tesla-t4",
     accelerator_count: int = 1,
-    max_run_duration: str = "3600s",
+    max_run_duration: str = "21600s",
     capture_logs_to_gcs: bool = False,
     output_gcs_bucket: str = None,
-    mount_gcs_bucket: bool = True,
     local_ssd_size_gb: int = 375,
     network: str = "default-vpc",
     subnetwork: str = "",
@@ -63,8 +61,7 @@ def create_batch_job_spec(
         accelerator_count: Number of GPUs
         max_run_duration: Maximum runtime in seconds format
         capture_logs_to_gcs: Capture stdout/stderr to files for GCS sync
-        output_gcs_bucket: GCS bucket to mount for direct output (e.g., 'gs://my-bucket/path')
-        mount_gcs_bucket: Whether to mount the GCS bucket as a volume (if False, outputs will be uploaded via gcsfs)
+        output_gcs_bucket: GCS destination for outputs (synced via rsync sidecar)
         local_ssd_size_gb: Size of Local SSD in GB (set to 0 to disable)
         network: VPC network name or full resource URL
         subnetwork: Subnet name or full resource URL (defaults to same name as network for AUTO-mode VPCs)
@@ -164,32 +161,15 @@ def create_batch_job_spec(
     task_spec_runnables.append(runnable)
     task_spec.runnables = task_spec_runnables
 
-    # Add GCS volume mounting if output bucket is specified AND mounting is enabled
+    # Task volumes (local SSD only — GCS sync is handled by the rsync sidecar in the batch script)
     task_volumes = []
 
-    if output_gcs_bucket and mount_gcs_bucket:
-        print(f" Mounting GCS bucket as volume: {output_gcs_bucket} -> {mount_path}")
-
-        # Create a GCS volume
-        gcs_bucket = batch_v1.GCS()
-        # Strip gs:// prefix if present - Google Batch expects just bucket/path
-        remote_path = output_gcs_bucket.rstrip("/")
-        if remote_path.startswith("gs://"):
-            remote_path = remote_path[5:]  # Remove 'gs://' prefix
-        gcs_bucket.remote_path = remote_path
-        gcs_volume = batch_v1.Volume()
-        gcs_volume.gcs = gcs_bucket
-        gcs_volume.mount_path = mount_path
-        task_volumes.append(gcs_volume)
-
+    if output_gcs_bucket:
         print(
-            f" GCS volume configured for direct output writing (remote_path: {remote_path})"
+            f" GCS output destination: {output_gcs_bucket} (synced via rsync sidecar)"
         )
-    elif output_gcs_bucket and not mount_gcs_bucket:
-        print(f" GCS bucket detected but volume mounting disabled: {output_gcs_bucket}")
-        print(" Outputs will be uploaded via gcsfs at job completion")
     else:
-        print(" No output GCS bucket specified, using local storage")
+        print(" No GCS output bucket specified, outputs will remain on local disk")
 
     # Local SSD must be added as a Volume so Batch formats and mounts it into the container
     # at the specified mount_path before the container starts.
@@ -293,15 +273,8 @@ def create_batch_job_spec(
 
     # Set log destination based on capture_logs_to_gcs setting
     if capture_logs_to_gcs:
-        # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
-        # This significantly reduces Cloud Logging costs while still preserving logs in GCS
-        if output_gcs_bucket and mount_gcs_bucket:
-            job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
-            job.logs_policy.logs_path = f"{mount_path}/job_logs"
-            print(
-                " Logs will be saved to mounted GCS bucket (Cloud Logging disabled to save costs)"
-            )
-        elif local_ssd_size_gb > 0:
+        # Logs saved to local SSD (synced to GCS by the rsync sidecar) to avoid Cloud Logging costs
+        if local_ssd_size_gb > 0:
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
             job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
             print(
@@ -310,7 +283,7 @@ def create_batch_job_spec(
         else:
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
             print(
-                " capture_logs_to_gcs requested but no mounted GCS bucket and local_ssd_size_gb=0; falling back to Cloud Logging"
+                " capture_logs_to_gcs requested but local_ssd_size_gb=0; falling back to Cloud Logging"
             )
     else:
         # Default behavior - all logs go to Cloud Logging
@@ -376,8 +349,8 @@ def create_batch_job_spec(
 )
 @click.option(
     "--max-run-duration",
-    default="3600s",
-    help="Maximum runtime in seconds format, e.g. '3600s'.",
+    default="604800s",
+    help="Maximum runtime in seconds format, max 7 days, e.g. '604800s'.",
 )
 @click.option(
     "--git-sha",
@@ -395,12 +368,6 @@ def create_batch_job_spec(
     default=False,
     is_flag=True,
     help="Capture stdout/stderr to files and sync to GCS instead of using Cloud Logging.",
-)
-@click.option(
-    "--mount-gcs-bucket",
-    default=True,
-    type=bool,
-    help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
 )
 @click.option(
     "--local-ssd-size-gb",
@@ -449,7 +416,6 @@ def submit_batch_component(
     git_sha: str,
     base_image: str,
     capture_logs_to_gcs: bool,
-    mount_gcs_bucket: bool,
     local_ssd_size_gb: int,
     dry_run: bool = False,
     network: str = "default-vpc",
@@ -553,7 +519,6 @@ def submit_batch_component(
         else "No accelerator"
     )
     print(f"Max runtime: {max_run_duration}")
-    print(f"Mount GCS bucket: {mount_gcs_bucket}")
     print(f"Local SSD size: {local_ssd_size_gb}GB")
 
     # Create the batch job specification
@@ -574,7 +539,6 @@ def submit_batch_component(
         max_run_duration=max_run_duration,
         capture_logs_to_gcs=capture_logs_to_gcs,
         output_gcs_bucket=output_gcs_bucket,
-        mount_gcs_bucket=mount_gcs_bucket,
         local_ssd_size_gb=local_ssd_size_gb,
         network=network,
         subnetwork=subnetwork,

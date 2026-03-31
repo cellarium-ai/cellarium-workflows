@@ -156,13 +156,21 @@ TASK_OUTPUT_DIR = "/tmp/cellarium_task_outputs"
 # Extensions treated as task output artifacts rather than framework internals.
 # Anything not in this set (checkpoints, yamls, logs, etc.) is left alone.
 _TASK_OUTPUT_EXTENSIONS = {
-    ".csv", ".tsv",
-    ".parquet", ".feather",
-    ".h5ad", ".h5", ".hdf5",
-    ".json", ".jsonl",
-    ".npz", ".npy",
-    ".pkl", ".pickle",
-    ".txt", ".zarr",
+    ".csv",
+    ".tsv",
+    ".parquet",
+    ".feather",
+    ".h5ad",
+    ".h5",
+    ".hdf5",
+    ".json",
+    ".jsonl",
+    ".npz",
+    ".npy",
+    ".pkl",
+    ".pickle",
+    ".txt",
+    ".zarr",
 }
 
 

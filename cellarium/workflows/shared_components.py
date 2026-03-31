@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 
-mount_path = "/mnt/disks/gcs_output"
+local_output_path = "/mnt/disks/local-ssd/run_outputs"
 
 
 def _assert_gcs_bucket_exists(gcs_path: str) -> None:
@@ -725,13 +725,60 @@ export CELLARIUM_CAPTURE_LOGS="{str(capture_logs_to_gcs).lower()}"
 export TRAIN_OP_REQUIREMENTS="{" ".join(train_op_requirements)}"
 export MOUNTED_GCS_PATH="{output_gcs_bucket}"
 
-# Run the batch setup script
+# Set up local output directory for training artifacts (TensorBoard, checkpoints, custom outputs).
+# The rsync sidecar below keeps this directory synced to GCS every 60 s so that TensorBoard
+# remains watchable in real time - no GCS FUSE mount required.
+# Use the local SSD only if it is actually mounted (not just a directory on the boot disk).
+if mountpoint -q /mnt/disks/local-ssd 2>/dev/null; then
+    LOCAL_OUTPUT_DIR="{local_output_path}"
+    mkdir -p "$LOCAL_OUTPUT_DIR"
+    echo " Using local SSD for output directory: $LOCAL_OUTPUT_DIR"
+else
+    LOCAL_OUTPUT_DIR="/tmp/run_outputs"
+    mkdir -p "$LOCAL_OUTPUT_DIR"
+    echo " Local SSD not mounted, using boot disk fallback: $LOCAL_OUTPUT_DIR"
+fi
+
+# Run the batch setup script first — this installs gcsfs, which the sync sidecar needs.
 cat > /tmp/batch_setup.sh << 'SETUP_EOF'
 {batch_setup_script}
 SETUP_EOF
 
 chmod +x /tmp/batch_setup.sh
 /tmp/batch_setup.sh
+
+# Write a Python GCS sync helper using gcsfs (gsutil is not present in the ML container image).
+cat > /tmp/gcs_sync.py << 'SYNC_EOF'
+#!/usr/bin/env python3
+import os, sys, gcsfs
+local_dir, gcs_dest = sys.argv[1], sys.argv[2].rstrip("/")
+if not os.path.isdir(local_dir):
+    sys.exit(0)
+fs = gcsfs.GCSFileSystem()
+synced = 0
+for root, _dirs, files in os.walk(local_dir):
+    for fname in files:
+        src = os.path.join(root, fname)
+        rel = os.path.relpath(src, local_dir)
+        dst = f"{{gcs_dest}}/{{rel}}"
+        try:
+            fs.put(src, dst)
+            synced += 1
+        except Exception as e:
+            print(f"  Warning: could not sync {{rel}}: {{e}}", file=sys.stderr)
+print(f"  Synced {{synced}} file(s) from {{local_dir}} to {{gcs_dest}}")
+SYNC_EOF
+
+# Start background GCS sync sidecar (non-fatal; training continues regardless of errors)
+RSYNC_PID=""
+if [ -n "$MOUNTED_GCS_PATH" ]; then
+    echo " Starting sync sidecar: $LOCAL_OUTPUT_DIR -> $MOUNTED_GCS_PATH (every 60s)"
+    while true; do
+        python3 /tmp/gcs_sync.py "$LOCAL_OUTPUT_DIR" "$MOUNTED_GCS_PATH" 2>/dev/null || true
+        sleep 60
+    done &
+    RSYNC_PID=$!
+fi
 
 # Create Python wrapper script that properly handles environment variables and config path replacement
 cat > /tmp/train_op_wrapper.py << 'WRAPPER_EOF'
@@ -748,11 +795,24 @@ config = os.environ.get('CONFIG')
 git_sha = os.environ.get('GIT_SHA')
 copy_data_to_local_disk = os.environ.get('COPY_DATA_TO_LOCAL_DISK', 'false').lower() == 'true'
 
-# Check if GCS volume is mounted and create modified config if needed
+# Apply config path substitution: replace the GCS run directory with the local
+# output directory so training writes artifacts to local SSD. The rsync sidecar
+# in the outer bash script keeps GCS up to date - no FUSE mount required.
 original_config = config
-if os.path.exists('{mount_path}'):
-    print(f" GCS volume mounted at {mount_path} - applying config path substitution")
+mounted_gcs_path = os.environ.get('MOUNTED_GCS_PATH', '')
+local_output_path = '{local_output_path}'
+# Mirror the bash logic: use the local SSD path only if /mnt/disks/local-ssd is
+# a real mount point, not just a directory on the boot disk.
+import subprocess as _sp
+_ssd_mounted = _sp.run(
+    ['mountpoint', '-q', '/mnt/disks/local-ssd'],
+    capture_output=True
+).returncode == 0
+if not _ssd_mounted:
+    local_output_path = '/tmp/run_outputs'
+    os.makedirs(local_output_path, exist_ok=True)
 
+if mounted_gcs_path:
     # Load the original config - handle both local and GCS paths
     if config.startswith('gs://'):
         print(f" Downloading config from GCS: {{config}}")
@@ -761,62 +821,61 @@ if os.path.exists('{mount_path}'):
         with fs.open(config, 'r') as f:
             config_content = f.read()
     else:
-        # Config is already a local path
         print(f" Reading local config: {{config}}")
         with open(config, 'r') as f:
             config_content = f.read()
-    
-    # Get the mounted GCS path from environment (set by the batch job)
-    # This should be the same path that was used for mounting
-    mounted_gcs_path = os.environ.get('MOUNTED_GCS_PATH', '')
-    
-    if mounted_gcs_path:
-        # Normalise to gs:// form
-        if not mounted_gcs_path.startswith('gs://'):
-            mounted_gcs_path = 'gs://' + mounted_gcs_path
 
-        # Also build the /gcs/ form for configs that use that convention
-        gcs_local_path = '/gcs/' + mounted_gcs_path[5:]  # Remove 'gs://' and add '/gcs/'
+    # Normalise to gs:// form
+    if not mounted_gcs_path.startswith('gs://'):
+        mounted_gcs_path = 'gs://' + mounted_gcs_path
 
-        # Replace both gs:// and /gcs/ forms of the mounted path with the local mount point.
-        # This lets users write output_path: gs://bucket/run_dir/file.csv in their config
-        # (matching default_root_dir) and have it transparently redirected to the FUSE mount,
-        # regardless of whether they are running locally, on Vertex AI, or on Google Batch.
-        modified_content = config_content.replace(mounted_gcs_path, "{mount_path}")
-        modified_content = modified_content.replace(gcs_local_path, "{mount_path}")
-        print(f" Replacing {{mounted_gcs_path}} (and {{gcs_local_path}}) with {mount_path} in config")
+    # Also build the /gcs/ form for configs that use that convention
+    gcs_local_path = '/gcs/' + mounted_gcs_path[5:]  # Remove 'gs://' and add '/gcs/'
 
-        replaced = (mounted_gcs_path in config_content) or (gcs_local_path in config_content)
-        if replaced:
-            print(f" Successfully updated GCS paths in config")
-        else:
-            print("ℹ No matching GCS paths found in config - no substitution needed")
+    # Replace both gs:// and /gcs/ forms of the GCS run directory with the local
+    # output path. This lets users write output_path: gs://bucket/run_dir/file.csv
+    # in their config and have it transparently land on local SSD (then synced to GCS).
+    modified_content = config_content.replace(mounted_gcs_path, local_output_path)
+    modified_content = modified_content.replace(gcs_local_path, local_output_path)
+    print(f" Replacing {{mounted_gcs_path}} (and {{gcs_local_path}}) with {{local_output_path}} in config")
+
+    replaced = (mounted_gcs_path in config_content) or (gcs_local_path in config_content)
+    if replaced:
+        print(f" Successfully updated GCS paths in config")
     else:
-        # Fallback: replace /gcs/ prefix (original behavior)
-        modified_content = config_content.replace('/gcs/', f'{mount_path}/')
-        print(f" No MOUNTED_GCS_PATH found, using fallback replacement of /gcs/ with {mount_path}/")
-        
-        # Log the changes made
-        if '/gcs/' in config_content:
-            print(f" Successfully updated GCS paths in config")
-        else:
-            print("ℹ No /gcs/ paths found in config - no substitution needed")
+        print("ℹ No matching GCS paths found in config - no substitution needed")
 
     # Write modified config to a temporary file
     temp_config = '/tmp/modified_config.yaml'
     with open(temp_config, 'w') as f:
         f.write(modified_content)
-    
-    # Update config path to use the modified version
+
     config = temp_config
     os.environ["CONFIG"] = config
     print(f" Created modified config with updated paths: {{config}}")
 else:
-    print(" GCS volume not mounted - using original config paths")
+    print(" No GCS output path configured - skipping config path substitution")
 
 # Execute train_op code with proper variable scope
 {train_op_code}
 WRAPPER_EOF
+
+# Cleanup trap: stop the rsync sidecar and do a blocking final sync when the
+# script exits (whether training succeeded or failed).
+_cleanup() {{
+    local _exit=$?
+    if [ -n "${{RSYNC_PID:-}}" ]; then
+        echo " Stopping rsync sidecar (PID $RSYNC_PID)"
+        kill "$RSYNC_PID" 2>/dev/null || true
+        wait "$RSYNC_PID" 2>/dev/null || true
+    fi
+    if [ -n "$MOUNTED_GCS_PATH" ]; then
+        echo " Final sync: $LOCAL_OUTPUT_DIR -> $MOUNTED_GCS_PATH"
+        python3 /tmp/gcs_sync.py "$LOCAL_OUTPUT_DIR" "$MOUNTED_GCS_PATH" || true
+    fi
+    exit $_exit
+}}
+trap _cleanup EXIT
 
 # Execute the training operation
 echo " Starting training operation..."

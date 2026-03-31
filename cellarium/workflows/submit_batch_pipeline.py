@@ -15,7 +15,6 @@ from .shared_components import (
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
     prepare_config_with_overrides,
-    mount_path,
 )
 
 
@@ -63,7 +62,6 @@ def create_batch_pipeline_jobs(
     default_accelerator_type: str = "nvidia-tesla-t4",
     default_accelerator_count: int = 0,
     capture_logs_to_gcs: bool = False,
-    mount_gcs_bucket: bool = True,
     local_ssd_size_gb: int = 375,
 ) -> List[batch_v1.Job]:
     """
@@ -71,9 +69,6 @@ def create_batch_pipeline_jobs(
 
     Note: Google Batch doesn't have built-in pipeline orchestration like Vertex AI,
     so we create individual jobs that can be submitted sequentially or managed externally.
-
-    Args:
-        mount_gcs_bucket: Whether to mount GCS buckets as volumes (if False, outputs will be uploaded via gcsfs)
     """
     jobs = []
 
@@ -112,30 +107,13 @@ def create_batch_pipeline_jobs(
         # Define the task specification
         task_spec = batch_v1.TaskSpec()
 
-        # Set up volumes
+        # Set up volumes (local SSD only — GCS sync is handled by the rsync sidecar)
         task_volumes = []
 
-        # Add GCS volume mounting if output bucket is detected AND mounting is enabled
-        if detected_bucket and mount_gcs_bucket:
-            gcs_bucket = batch_v1.GCS()
-            # Strip gs:// prefix if present - Google Batch expects just bucket/path
-            remote_path = detected_bucket.rstrip("/")
-            if remote_path.startswith("gs://"):
-                remote_path = remote_path[5:]  # Remove 'gs://' prefix
-            gcs_bucket.remote_path = remote_path
-            gcs_volume = batch_v1.Volume()
-            gcs_volume.gcs = gcs_bucket
-            gcs_volume.mount_path = mount_path
-            task_volumes.append(gcs_volume)
-
+        if detected_bucket:
             print(
-                f" Added GCS volume mount: {detected_bucket} -> {mount_path} (remote_path: {remote_path}) for job {job_name}"
+                f" GCS output destination for {job_name}: {detected_bucket} (synced via rsync sidecar)"
             )
-        elif detected_bucket and not mount_gcs_bucket:
-            print(
-                f" GCS bucket detected but volume mounting disabled for job {job_name}: {detected_bucket}"
-            )
-            print(" Outputs will be uploaded via gcsfs at job completion")
         else:
             print(
                 f" No output GCS bucket detected for job {job_name}, using local storage"
@@ -262,13 +240,9 @@ def create_batch_pipeline_jobs(
 
         # Set log destination based on capture_logs_to_gcs setting
         if capture_logs_to_gcs:
-            # When capturing logs to GCS, save logs to a local path and disable Cloud Logging
-            # This significantly reduces Cloud Logging costs while still preserving logs in GCS
+            # Logs saved to local SSD (synced to GCS by the rsync sidecar) to avoid Cloud Logging costs
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.PATH
-            if detected_bucket and mount_gcs_bucket:
-                job.logs_policy.logs_path = f"{mount_path}/job_logs"
-            else:
-                job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
+            job.logs_policy.logs_path = "/mnt/disks/local-ssd/job_logs"
         else:
             # Default behavior - all logs go to Cloud Logging
             job.logs_policy.destination = batch_v1.LogsPolicy.Destination.CLOUD_LOGGING
@@ -351,12 +325,6 @@ def create_batch_pipeline_jobs(
     help="Capture stdout/stderr to files and sync to GCS instead of using Cloud Logging.",
 )
 @click.option(
-    "--mount-gcs-bucket",
-    default=True,
-    type=bool,
-    help="Mount the output GCS bucket as a volume for direct writing. If False, outputs will be uploaded via gcsfs.",
-)
-@click.option(
     "--local-ssd-size-gb",
     default=375,
     type=int,
@@ -381,7 +349,6 @@ def submit_batch_pipeline(
     default_accelerator_type: str,
     default_accelerator_count: int,
     capture_logs_to_gcs: bool,
-    mount_gcs_bucket: bool,
     local_ssd_size_gb: int,
     extract_bucket=None,
 ):
@@ -426,7 +393,6 @@ def submit_batch_pipeline(
     print(f"Project: {project}")
     print(f"Location: {location}")
     print(f"Sequential submission: {submit_sequentially}")
-    print(f"Mount GCS bucket: {mount_gcs_bucket}")
     print(f"Local SSD size: {local_ssd_size_gb}GB")
 
     # Validate all tools
@@ -454,7 +420,6 @@ def submit_batch_pipeline(
         default_accelerator_type=default_accelerator_type,
         default_accelerator_count=default_accelerator_count,
         capture_logs_to_gcs=capture_logs_to_gcs,
-        mount_gcs_bucket=mount_gcs_bucket,
         local_ssd_size_gb=local_ssd_size_gb,
     )
 
