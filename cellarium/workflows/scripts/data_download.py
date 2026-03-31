@@ -6,6 +6,7 @@ import copy
 import glob
 import gcsfs
 import re
+import subprocess
 from ruamel.yaml import YAML
 
 # Get config from environment variable
@@ -21,6 +22,8 @@ fs = gcsfs.GCSFileSystem()
 if os.path.exists("/mnt/disks/local-ssd"):
     LOCAL_DATA_DIR = "/mnt/disks/local-ssd/training_data"
     print(" Using Local SSD for high-performance data storage")
+    print("df -h /mnt/disks/local-ssd:")
+    subprocess.run(["df", "-h", "/mnt/disks/local-ssd"])
 else:
     LOCAL_DATA_DIR = "/tmp/training_data"
     print(" Using boot disk for data storage")
@@ -72,32 +75,35 @@ except KeyError:
 
 # 2. download data to local disk
 print(f"Copying data from GCS {original_data_reference} to local disk {LOCAL_DATA_DIR}")
-data_reference = copy.copy(original_data_reference)
-if isinstance(data_reference, str):
-    # Handle brace expansion
-    if "{" in data_reference and ".." in data_reference:
-        pattern = re.search(r"\{(\d+)\.\.(\d+)\}", data_reference)
-        if pattern:
-            start_str, end_str = pattern.groups()
+
+sentinel_path = os.path.join(LOCAL_DATA_DIR, ".download_complete")
+if os.path.exists(sentinel_path):
+    print(
+        f" Sentinel found at {sentinel_path} — data already downloaded by pre-container runnable, skipping."
+    )
+    downloaded_files = glob.glob(os.path.join(LOCAL_DATA_DIR, "*.h5ad"))
+else:
+    print(" No sentinel found — downloading via gcsfs fallback")
+    data_reference = copy.copy(original_data_reference)
+    if isinstance(data_reference, str):
+        brace = re.search(r"\{(\d+)\.\.(\d+)\}", data_reference)
+        if brace:
+            start_str, end_str = brace.groups()
             start, end = int(start_str), int(end_str)
-            width = len(start_str)  # preserve leading zeros (e.g. "000000" -> width 6)
-            base_path = data_reference[: pattern.start()]
-            suffix = data_reference[pattern.end() :]
+            width = len(start_str)
+            base_path = data_reference[: brace.start()]
+            suffix = data_reference[brace.end() :]
             data_reference = [
                 f"{base_path}{str(i).zfill(width)}{suffix}"
                 for i in range(start, end + 1)
             ]
         else:
             data_reference = [data_reference]
-    else:
-        data_reference = [data_reference]
-
-# Download files in parallel using gcsfs.get
-with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-    futures = [executor.submit(download_file, src) for src in data_reference]
-    downloaded_files = [
-        future.result() for future in concurrent.futures.as_completed(futures)
-    ]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
+        futures = [executor.submit(download_file, src) for src in data_reference]
+        downloaded_files = [
+            future.result() for future in concurrent.futures.as_completed(futures)
+        ]
 
 print("Listing local .h5ad files:")
 h5ad_files = glob.glob(os.path.join(LOCAL_DATA_DIR, "*.h5ad"))

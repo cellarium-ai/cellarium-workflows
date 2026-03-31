@@ -1,6 +1,7 @@
 """Submit a single component cellarium-ml job to Google Cloud Batch."""
 
 import re
+import textwrap
 import uuid
 from datetime import datetime
 
@@ -14,6 +15,7 @@ from .shared_components import (
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
     extract_data_gcs_bucket_from_config,
+    extract_data_gcs_glob_from_config,
     assert_gcs_bucket_accessible_as_service_account,
     assert_data_first_file_exists,
     prepare_config_with_overrides,
@@ -31,6 +33,7 @@ def create_batch_job_spec(
     git_sha: str,
     copy_data_to_local_disk: bool,
     base_image: str,
+    data_gcs_glob_uri: str = "",
     machine_type: str = "n1-standard-4",
     accelerator_type: str = "nvidia-tesla-t4",
     accelerator_count: int = 1,
@@ -94,16 +97,48 @@ def create_batch_job_spec(
     # Define the task specification
     task_spec = batch_v1.TaskSpec()
 
+    # Pre-container Script runnable: runs directly on the VM host (not in Docker),
+    # so gcloud uses the host's Python runtime with no container conflicts.
+    # Downloads all data shards to the local SSD before the container starts,
+    # then writes a sentinel file so data_download.py can skip the download step.
+    task_spec_runnables = []
+    if copy_data_to_local_disk and data_gcs_glob_uri:
+        local_data_dir = (
+            "/mnt/disks/local-ssd/training_data"
+            if local_ssd_size_gb > 0
+            else "/tmp/training_data"
+        )
+        sentinel_path = local_data_dir + "/.download_complete"
+        data_download_script = textwrap.dedent(f"""
+            #!/bin/bash
+            set -e
+            mkdir -p "{local_data_dir}"
+            echo " Pre-container data download starting..."
+            echo " Source: {data_gcs_glob_uri}"
+            echo " Dest:   {local_data_dir}/"
+            df -h "{local_data_dir}" || true
+            gsutil -m cp "{data_gcs_glob_uri}" "{local_data_dir}/"
+            touch "{sentinel_path}"
+            echo " Download complete. Sentinel written to {sentinel_path}"
+            df -h "{local_data_dir}"
+        """).strip()
+
+        pre_runnable = batch_v1.Runnable()
+        pre_runnable.script = batch_v1.Runnable.Script()
+        pre_runnable.script.text = data_download_script
+        task_spec_runnables.append(pre_runnable)
+        print(
+            f" Added pre-container download runnable: gsutil -m cp {data_gcs_glob_uri} -> {local_data_dir}/"
+        )
+
     # Configure the container runnable
     container = batch_v1.Runnable.Container()
     container.image_uri = base_image
     container.commands = ["/bin/bash", "-c", batch_script]
 
     # Configure shared memory for PyTorch DataLoader workers
-    # This prevents "Bus error" when using multiple workers
-    container.options = (
-        "--shm-size=4g"  # Increased from 2g for more workers/prefetching
-    )
+    # This prevents "Bus error" when using multiple workers.
+    container.options = "--shm-size=4g"
     print(" Configured container with shared memory size: 4GB")
 
     # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
@@ -118,7 +153,8 @@ def create_batch_job_spec(
     for key, value in env_vars.items():
         runnable.environment.variables[key] = value
 
-    task_spec.runnables = [runnable]
+    task_spec_runnables.append(runnable)
+    task_spec.runnables = task_spec_runnables
 
     # Add GCS volume mounting if output bucket is specified AND mounting is enabled
     task_volumes = []
@@ -147,12 +183,15 @@ def create_batch_job_spec(
     else:
         print(" No output GCS bucket specified, using local storage")
 
-    # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd
-    # when attached via allocation policy - no volume configuration needed
+    # Local SSD must be added as a Volume so Batch formats and mounts it into the container
+    # at the specified mount_path before the container starts.
     if local_ssd_size_gb > 0:
-        print(
-            f" Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)"
-        )
+        ssd_volume = batch_v1.Volume()
+        ssd_volume.device_name = "local-ssd"  # must match attached_disk.device_name
+        ssd_volume.mount_path = "/mnt/disks/local-ssd"
+        ssd_volume.mount_options = ["rw,async"]
+        task_volumes.append(ssd_volume)
+        print(f" Local SSD configured: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd")
     else:
         print(" Local SSD disabled, using boot disk only")
 
@@ -199,12 +238,9 @@ def create_batch_job_spec(
             f" No GPU configured (count: {accelerator_count}, type: '{accelerator_type}')"
         )
 
-    instance_policy_or_template = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
-    instance_policy_or_template.policy = instance_policy
-    if accelerator_count > 0 and accelerator_type:
-        instance_policy_or_template.install_gpu_drivers = True
-
-    # Add Local SSD configuration
+    # Add Local SSD configuration — must be done BEFORE assigning instance_policy to
+    # instance_policy_or_template, because proto-plus copies the message on assignment;
+    # any mutations to instance_policy after that point are silently ignored.
     if local_ssd_size_gb > 0:
         attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
         attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
@@ -212,6 +248,11 @@ def create_batch_job_spec(
         attached_disk.new_disk.size_gb = local_ssd_size_gb
         attached_disk.device_name = "local-ssd"
         instance_policy.disks = [attached_disk]
+
+    instance_policy_or_template = batch_v1.AllocationPolicy.InstancePolicyOrTemplate()
+    instance_policy_or_template.policy = instance_policy
+    if accelerator_count > 0 and accelerator_type:
+        instance_policy_or_template.install_gpu_drivers = True
 
     allocation_policy.instances = [instance_policy_or_template]
 
@@ -473,6 +514,10 @@ def submit_batch_component(
         assert_gcs_bucket_accessible_as_service_account(project, data_bucket)
         assert_data_first_file_exists(config)
 
+    data_gcs_glob_uri = (
+        extract_data_gcs_glob_from_config(config) if copy_data_to_local_disk else ""
+    )
+
     # Validate tool name
     url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
     cli_tool_names = get_allowed_cli_tool_names(url)
@@ -515,6 +560,7 @@ def submit_batch_component(
         git_sha=git_sha,
         copy_data_to_local_disk=copy_data_to_local_disk,
         base_image=base_image,
+        data_gcs_glob_uri=data_gcs_glob_uri,
         machine_type=machine_type,
         accelerator_type=accelerator_type,
         accelerator_count=accelerator_count,

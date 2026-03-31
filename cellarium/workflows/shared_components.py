@@ -65,6 +65,43 @@ def extract_data_gcs_bucket_from_config(config_path: str) -> str:
         return ""
 
 
+def extract_data_gcs_glob_from_config(config_path: str) -> str:
+    """
+    Extract a gcloud-compatible glob URI for the data files in the config.
+
+    Brace-expansion patterns like gs://bucket/path/extract_{000000..009446}.h5ad
+    are converted to gs://bucket/path/extract_*.h5ad.
+
+    Returns the glob URI string, or an empty string if not found.
+    """
+    import re
+
+    try:
+        if config_path.startswith("gs://"):
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(config_path, "r") as f:
+                content = f.read()
+        else:
+            with open(config_path, "r") as f:
+                content = f.read()
+
+        match = re.search(r"^\s*filenames:\s*([^\s\n]+)", content, re.MULTILINE)
+        if not match:
+            return ""
+
+        filenames = match.group(1).strip()
+        if not filenames.startswith("gs://"):
+            return ""
+
+        glob_uri = re.sub(r"\{\d+\.\.\d+\}", "*", filenames)
+        print(f" Data GCS glob URI: {glob_uri}")
+        return glob_uri
+
+    except Exception as e:
+        print(f" Warning: Could not parse config for data GCS glob: {e}")
+        return ""
+
+
 def assert_gcs_bucket_accessible_as_service_account(
     project: str, bucket_name: str
 ) -> None:
