@@ -131,15 +131,21 @@ def create_batch_job_spec(
             f" Added pre-container download runnable: gsutil -m cp {data_gcs_glob_uri} -> {local_data_dir}/"
         )
 
+    # Resolve machine resources up front so shm-size can be derived from total RAM.
+    cpu_milli, memory_mib = get_machine_type_resources(machine_type)
+
     # Configure the container runnable
     container = batch_v1.Runnable.Container()
     container.image_uri = base_image
     container.commands = ["/bin/bash", "-c", batch_script]
 
-    # Configure shared memory for PyTorch DataLoader workers
-    # This prevents "Bus error" when using multiple workers.
-    container.options = "--shm-size=4g"
-    print(" Configured container with shared memory size: 4GB")
+    # Configure shared memory for PyTorch DataLoader workers.
+    # Use ~75% of total RAM so workers can buffer freely without crowding out
+    # the training process.  Outside a container /dev/shm is unbounded, which
+    # is why bus errors only appear when running containerised.
+    shm_gb = max(1, (memory_mib * 3) // (1024 * 4))
+    container.options = f"--shm-size={shm_gb}g"
+    print(f" Configured container with shared memory size: {shm_gb}GB (~75% of {memory_mib // 1024}GB RAM)")
 
     # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
     if accelerator_count > 0:
@@ -199,8 +205,7 @@ def create_batch_job_spec(
     if task_volumes:
         task_spec.volumes = task_volumes
 
-    # Set compute resources based on machine type
-    cpu_milli, memory_mib = get_machine_type_resources(machine_type)
+    # Set compute resources based on machine type (already resolved above)
     compute_resource = batch_v1.ComputeResource()
     compute_resource.cpu_milli = cpu_milli
     compute_resource.memory_mib = memory_mib
