@@ -149,6 +149,71 @@ def capture_logs_to_files(stdout_file, stderr_file):
         stderr_log.close()
 
 
+# Staging directory for bare-filename task outputs (e.g. output_path: results.csv).
+# The training process runs with CWD set here so relative paths land in one place.
+TASK_OUTPUT_DIR = "/tmp/cellarium_task_outputs"
+
+# Extensions treated as task output artifacts rather than framework internals.
+# Anything not in this set (checkpoints, yamls, logs, etc.) is left alone.
+_TASK_OUTPUT_EXTENSIONS = {
+    ".csv", ".tsv",
+    ".parquet", ".feather",
+    ".h5ad", ".h5", ".hdf5",
+    ".json", ".jsonl",
+    ".npz", ".npy",
+    ".pkl", ".pickle",
+    ".txt", ".zarr",
+}
+
+
+def setup_task_output_dir() -> str:
+    """Create the staging directory for bare-filename task outputs and set CWD to it.
+
+    Any relative output paths written by the model (e.g. ``output_path: results.csv``)
+    will land here, making them easy to sweep up and upload to GCS afterwards.
+    Lightning's ``default_root_dir`` is always absolute so checkpoint paths are unaffected.
+    """
+    os.makedirs(TASK_OUTPUT_DIR, exist_ok=True)
+    os.chdir(TASK_OUTPUT_DIR)
+    print(f" Task output staging dir: {TASK_OUTPUT_DIR} (CWD changed)")
+    return TASK_OUTPUT_DIR
+
+
+def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
+    """Upload data-output files from TASK_OUTPUT_DIR to gcs_dest.
+
+    Only files whose extension is in ``_TASK_OUTPUT_EXTENSIONS`` are uploaded,
+    so framework files (checkpoints, yamls, logs) are ignored.
+    """
+    if not gcs_dest:
+        print("sync_task_outputs_to_gcs: no GCS destination configured, skipping")
+        return
+
+    try:
+        files_to_upload = []
+        for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
+            for fname in files:
+                _, ext = os.path.splitext(fname)
+                if ext.lower() in _TASK_OUTPUT_EXTENSIONS:
+                    files_to_upload.append(os.path.join(root, fname))
+
+        if not files_to_upload:
+            print("No task output files found to sync to GCS")
+            return
+
+        print(f"Syncing {len(files_to_upload)} task output file(s) to {gcs_dest} ...")
+        fs = gcsfs.GCSFileSystem()
+        for local_file in files_to_upload:
+            rel = os.path.relpath(local_file, TASK_OUTPUT_DIR)
+            gcs_file = f"{gcs_dest.rstrip('/')}/{rel}"
+            fs.put(local_file, gcs_file)
+            print(f" Uploaded {rel} -> {gcs_file}")
+
+        print("Task output sync complete")
+    except Exception as e:
+        print(f"Warning: Could not sync task outputs to GCS: {e}")
+
+
 def finalize_gcs_output_sync():
     """Final step: sync all outputs back to GCS."""
     try:
@@ -209,8 +274,16 @@ def finalize_gcs_output_sync():
 # Set up GCS output handling before training
 updated_config = setup_gcs_output_handling(config)  # noqa: F821
 
+# GCS destination for bare-filename task outputs — same bucket that is FUSE-mounted.
+# MOUNTED_GCS_PATH is set by the batch script from the config's default_root_dir.
+task_output_gcs_dest = os.environ.get("MOUNTED_GCS_PATH", "")  # noqa: F821
+
+# Change CWD to the staging directory so that relative output paths (e.g.
+# output_path: hvg_seurat_v3.csv) land in a known location for post-training upload.
+setup_task_output_dir()
+
 # Check if we should capture logs to files (for GCS sync)
-capture_logs = os.environ.get("CELLARIUM_CAPTURE_LOGS", "").lower() == "true"
+capture_logs = os.environ.get("CELLARIUM_CAPTURE_LOGS", "").lower() == "true"  # noqa: F821
 
 try:
     if capture_logs:
@@ -227,5 +300,7 @@ try:
         # Run normally without log capture
         cellarium_ml_cli(args=[tool, subcommand, "--config", updated_config])  # noqa: F821
 finally:
-    # Always try to sync outputs back to GCS
+    # Sync /gcs/-style path outputs (legacy mechanism)
     finalize_gcs_output_sync()
+    # Sweep any data files left in the staging dir by relative-path outputs
+    sync_task_outputs_to_gcs(task_output_gcs_dest)

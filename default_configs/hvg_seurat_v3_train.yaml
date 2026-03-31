@@ -14,14 +14,14 @@ model:
       n_top_genes: 8000
       use_batch_key: true
       flavor: seurat_v3
-      output_path: null
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..009446}.h5ad
+      # filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..009446}.h5ad
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..000050}.h5ad
       shard_size: 10_000
-      last_shard_size: 6707
+      # last_shard_size: 6707
       max_cache_size: 2
       cache_size_strictly_enforced: true
       indices_strict: true
@@ -36,6 +36,7 @@ data:
     batch_index_n:
       attr: obs
       key: assay_suspension_type
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
   batch_size: 5000
   iteration_strategy: cache_efficient
   num_workers: 8

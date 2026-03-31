@@ -771,18 +771,23 @@ if os.path.exists('{mount_path}'):
     mounted_gcs_path = os.environ.get('MOUNTED_GCS_PATH', '')
     
     if mounted_gcs_path:
-        # Convert gs://bucket/path/to/file to /gcs/bucket/path/to/file for replacement
-        if mounted_gcs_path.startswith('gs://'):
-            gcs_local_path = '/gcs/' + mounted_gcs_path[5:] # Remove 'gs://' and add '/gcs/'
-        else:
-            gcs_local_path = '/gcs/' + mounted_gcs_path
-        
-        # Replace the full mounted path, not just /gcs/
-        modified_content = config_content.replace(gcs_local_path, "{mount_path}")
-        print(f" Replacing {{gcs_local_path}} with {mount_path} in config")
-        
-        # Log the changes made
-        if gcs_local_path in config_content:
+        # Normalise to gs:// form
+        if not mounted_gcs_path.startswith('gs://'):
+            mounted_gcs_path = 'gs://' + mounted_gcs_path
+
+        # Also build the /gcs/ form for configs that use that convention
+        gcs_local_path = '/gcs/' + mounted_gcs_path[5:]  # Remove 'gs://' and add '/gcs/'
+
+        # Replace both gs:// and /gcs/ forms of the mounted path with the local mount point.
+        # This lets users write output_path: gs://bucket/run_dir/file.csv in their config
+        # (matching default_root_dir) and have it transparently redirected to the FUSE mount,
+        # regardless of whether they are running locally, on Vertex AI, or on Google Batch.
+        modified_content = config_content.replace(mounted_gcs_path, "{mount_path}")
+        modified_content = modified_content.replace(gcs_local_path, "{mount_path}")
+        print(f" Replacing {{mounted_gcs_path}} (and {{gcs_local_path}}) with {mount_path} in config")
+
+        replaced = (mounted_gcs_path in config_content) or (gcs_local_path in config_content)
+        if replaced:
             print(f" Successfully updated GCS paths in config")
         else:
             print("ℹ No matching GCS paths found in config - no substitution needed")
