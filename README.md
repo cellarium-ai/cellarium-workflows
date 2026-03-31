@@ -1,171 +1,227 @@
 # Cellarium Workflows
 
-This package contains a command line tool to submit cellarium-ml pipelines to the Vertex AI platform (powered by Kubeflow).
+A CLI tool for submitting [cellarium-ml](https://github.com/cellarium-ai/cellarium-ml) training and inference jobs to different compute backends.
+
+Example: start an scVI run on the entire 20250811 CZI cellxgene census on specified Google Compute Engine hardware, all from your command line:
+
+```bash
+cellarium-workflow submit-batch-component \
+    --tool scvi \
+    --subcommand fit \
+    --config folder/scvi_config.yaml \
+    --machine-type n1-standard-16 \
+    --accelerator-type nvidia-tesla-t4 \
+    --accelerator-count 1 \
+    --extract-bucket gs://bucket/path/to/extract_files
+```
+
+In this example, `gs://bucket/path/to/extract_files` is the bucket created by extracting data using `Cellarium Nexus`.  If data or configs or output directories in the config file are in Google Cloud Storage, file localization will be handled automatically.
 
 ## Installation
 
-* [Install gcloud CLI](https://cloud.google.com/sdk/docs/install)
-* [Authenticate gcloud CLI util](https://cloud.google.com/docs/authentication/gcloud)
-* Set up [conda environment](https://docs.anaconda.com/miniconda/#quick-command-line-install) for pipeline submissions and install this package. Run the following commands:
 ```bash
-  (base) $  git clone https://github.com/cellarium-ai/cellarium-workflows.git
-  (base) $  cd cellarium-workflows
-  (base) $  conda create -n vertex python=3.10
-  (base) $  conda activate vertex
-(vertex) $  pip install .
+pip install -e .
 ```
 
-## Example
+This installs the `cellarium-workflow` command.
 
-This is a fully working example that will run a smoke test of `cellarium-ml onepass_mean_var_std fit -c cellarium/workflows/example/onepass_train_smoketest_config.yaml` on Vertex AI Pipelines.
+## Backends
 
-Go to the example directory and run the script:
+The best tested method is `submit-batch-component`, and we recommend it for most use cases.
 
-```bash
-(vertex) $  cd cellarium/workflows/example
-(vertex) $  ./onepass_train_smoketest.sh
-```
+| Sub-command | Where it runs |
+|---|---|
+| `local-single-component` | Local machine |
+| `submit-vertex-component` | Vertex AI Pipelines (single step) |
+| `submit-vertex-pipeline` | Vertex AI Pipelines (sequential multi-step) |
+| `submit-batch-component` | Google Cloud Batch (single job) |
+| `submit-batch-pipeline` | Google Cloud Batch (sequential multi-step) |
 
-The bash script copies a local YAML file to the cloud and then runs the command line tool to submit a pipeline. See the contents of `cellarium/workflows/example/onepass_train_smoketest.sh` for details.
+## Usage
 
-## Quick start
+### Local
 
-No changes to the code in this repo are necessary. Simply run the appropriate command line tool with the appropriate input arguments.
-
-### Pipeline consisting of one component
-
-1. Create a YAML config file for the `cellarium-ml` tool you wish to run.
-2. Copy the YAML config file to a google bucket like `gs://bucket/path/to/config.yaml`
-3. Run the following from the command line to submit a pipeline:
+Run a job on your local machine — useful for development and smoke-testing.
 
 ```bash
-(vertex) $  python cellarium/workflows/submit_single_component.py \
-                --tool onepass_mean_var_std \
-                --subcommand fit \
-                --config gs://bucket/path/to/onepass_config.yaml
+cellarium-workflow local-single-component \
+    --tool onepass_mean_var_std \
+    --subcommand fit \
+    --config /path/to/config.yaml
 ```
 
-That's it!
+### Vertex AI — Single Component
 
-#### Additional input arguments
-
-You might want to specify a few more optional inputs, for example:
+Submit a single job to Vertex AI Pipelines.
 
 ```bash
-(vertex) $  python cellarium/workflows/submit_single_component.py \
-                --tool scvi \
-                --subcommand fit \
-                --config gs://bucket/path/to/scvi_config.yaml \
-                --accelerator-type NVIDIA_TESLA_T4 \
-                --accelerator-count 2 \
-                --git-sha ffa12699f0ae9951454f77cd3151961a0693f365
+cellarium-workflow submit-vertex-component \
+    --tool onepass_mean_var_std \
+    --subcommand fit \
+    --config gs://bucket/config.yaml \
+    --project my-project \
+    --machine-type n1-standard-8 \
+    --accelerator-type NVIDIA_TESLA_T4 \
+    --accelerator-count 1
 ```
 
-Run this to see more information about optional inputs:
+### Vertex AI — Pipeline
+
+Submit a multi-step sequential pipeline to Vertex AI.
 
 ```bash
-(vertex) $  python cellarium/workflows/submit_single_component.py --help
+cellarium-workflow submit-vertex-pipeline \
+    --pipeline-config pipeline_config.yaml \
+    --project my-project
 ```
 
-### Sequential pipeline consisting of several components
+### Google Cloud Batch — Single Component
 
-1. Decide which `cellarium-ml` tools will be run in which order.
-2. Create YAML config files for each `cellarium-ml` tool you wish to run.
-3. Copy the YAML config files to a google bucket like `gs://bucket/path/to/config1.yaml`, `gs://bucket/path/to/config2.yaml`, etc.
-4. Create a pipeline YAML config file (this "pipeline config" file is something different than a `cellarium-ml` config file). This can be a local file, and does not need to be in a google bucket. Here is an example pipeline YAML config file that runs `onepass_mean_var_std`, `incremental_pca`, and `logistic_regression` in that order:
-
-```yaml
-example_pipeline_name:
-  - tool: onepass_mean_var_std
-    subcommand: fit
-    config: gs://bucket/path/to/onepass_train_config.yaml
-    machine_type: n1-standard-4
-    accelerator_count: 0
-  - tool: incremental_pca
-    subcommand: fit
-    config: gs://bucket/path/to/incremental_pca_train_config.yaml
-    machine_type: n1-standard-16
-    accelerator_type: nvidia-t4
-    accelerator_count: 4
-  - tool: logistic_regression
-    subcommand: fit
-    config: gs://bucket/path/to/logistic_regression_train_config.yaml
-    machine_type: n1-standard-16
-    accelerator_type: nvidia-t4
-    accelerator_count: 4
-```
-
-5. Run the following from the command line to submit the pipeline (the example `pipeline_config.yaml` in this repository just runs `onepass_mean_var_std` twice):
+Submit a single job to Cloud Batch. Supports local SSD data staging, custom networking, and optional log capture to GCS.
 
 ```bash
-(vertex) $  python cellarium/workflows/submit_pipeline.py \
-                --pipeline-config cellarium/workflows/example/pipeline_config.yaml
+cellarium-workflow submit-batch-component \
+    --tool scvi \
+    --subcommand fit \
+    --config gs://bucket/config.yaml \
+    --project my-project \
+    --machine-type n1-standard-4 \
+    --accelerator-type nvidia-tesla-t4 \
+    --accelerator-count 1
 ```
 
-NOTE: It is also possible to run a single component pipeline using a pipeline config file, rather than using `python submit_single_component.py` as above. Simply specify a pipeline YAML config with a single element list, like this:
+### Google Cloud Batch — Pipeline
 
-```yaml
-my_single_component_pipeline:
-  - tool: onepass_mean_var_std
-    subcommand: fit
-    config: gs://bucket/path/to/onepass_train_config.yaml
-    machine_type: n1-standard-4
-    accelerator_count: 0
+Submit a multi-step pipeline as individual Cloud Batch jobs. Use `--submit-sequentially` to run them one at a time.
+
+```bash
+cellarium-workflow submit-batch-pipeline \
+    --config pipeline_config.yaml \
+    --project my-project \
+    --submit-sequentially true
 ```
 
-## Vertex AI Hints
+## Configuration
 
-### Machine configuration
+### Training Config
 
-Sometimes it is not straightforward to figure out the correct capitalization and the use of underscores versus dashes, and these details seem to be critical (and Vertex AI does not give a helpful error message). Here are some working example combinations.
-
-You can read more about allowed machine combinations in [the google documentation](https://cloud.google.com/compute/docs/gpus).
-
-#### L4 GPU
-
-The L4 requires the use of a "G2" series machine.
-
-```yaml
-machine_type: g2-standard-16
-accelerator_type: NVIDIA_L4
-```
-
-#### T4 GPU
-
-```yaml
-machine_type: n1-standard-16
-accelerator_type: NVIDIA_TESLA_T4
-```
-
-### Output files
-
-Output files can be handled in different ways by Kubeflow. By far the easiest thing to do when using `cellarium-ml` is to specify in the YAML config file that the trainer's `default_root_dir` should be `/gcs/bucket/path`, which (assuming `gcsfs` is installed, and `cellarium-workflows` automatically ensures that it does get installed) auto-magically copies files written to local `/gcs/bucket/path` to `gs://bucket/path`. This happens in real time as the pipeline is being run. Outputs can be accessed by navigating to `gs://bucket/path`. Example config snippet:
+A standard [PyTorch Lightning CLI](https://lightning.ai/docs/pytorch/stable/cli/lightning_cli.html) YAML. The key fields used by this tool are:
 
 ```yaml
 trainer:
-  ...
-  default_root_dir: /gcs/cellarium-human-primary-data/curriculum/human_all_primary_20241108/trained_models/20241120_my_model
+  default_root_dir: gs://my-bucket/outputs/
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://bucket/path/extract_{0..9446}.h5ad
+      shard_size: 10000
+      last_shard_size: 3147
 ```
 
-The code in `cellarium-workflows` does assume that outputs will be handled as above, and it provides no other way to obtain outputs. 
+The `filenames` field uses brace-expansion to reference sharded `.h5ad` files. You can pass `--extract-bucket gs://bucket/path/` to have the tool auto-populate `filenames`, `shard_size`, and `last_shard_size` from GCS at submission time instead of hardcoding them.
 
-### Tensorboard
+### Pipeline Config
 
-If you specify the `default_root_dir` as `/gcs/bucket/path` in your `cellarium-ml` YAML config file, and assuming the model you are running uses a pytorch-lightning TensorBoard logger (which it does by default), then your logs will be copied out to `gs://bucket/path/lightning_logs/version_<NUM>/events.out.tfevents.<SOMETHING>`. This happens in real time as the pipeline is running. All you need to do is point a tensorboard instance at those logs. There are two (probably more) straightforward ways to do this:
+A YAML file listing the steps to run in order:
 
-1. Copy the file to your local machine and run tensorboard locally.
+```yaml
+my_pipeline_name:
+  - tool: onepass_mean_var_std
+    subcommand: fit
+    config: gs://bucket/configs/onepass_config.yaml
+    machine_type: n1-standard-4
+    accelerator_type: nvidia-tesla-t4
+    accelerator_count: 1
 
-    ```bash
-    $ gsutil cp gs://bucket/path/lightning_logs/version_<NUM>/events.out.tfevents.* .
-    $ tensorboard --logdir .
-    ```
+  - tool: scvi
+    subcommand: fit
+    config: gs://bucket/configs/scvi_config.yaml
+    machine_type: n1-standard-16
+    accelerator_type: nvidia-tesla-v100
+    accelerator_count: 1
+    max_run_duration: 7200s
+```
 
-    Drawback: you need to re-copy the file if you want see things update.
+Each step can specify its own machine type and GPU configuration. Fields not set on a step inherit the pipeline defaults.
 
-    Advantage: no need to install the tools needed for option 2.
+## Authentication
 
-2. Mount the google bucket (using something like `gcsfuse` or `rclone`) and point tensorboard at that local mounted directory.
+```bash
+gcloud auth application-default login
+```
 
-### Tracking jobs
+## Google Batch setup
 
-When a pipeline has been submitted using one of the above options, a URL will be printed to stdout where you can track the progress of your pipeline using Vertex AI's web UI.
+For a new Google project which has never used Batch before, you will need to set up a few things. We have distilled this into a helper script, included here.  Fill in `PROJECT_ID` with the appropriate value for your Google project.
+
+```bash
+#!/bin/bash
+
+# =======================================================================
+# Set your Google Cloud Project ID here
+# =======================================================================
+PROJECT_ID="your-project-id-here"
+
+echo "Starting Google Batch setup for project: $PROJECT_ID..."
+
+# 1. Enable the Google Batch API (and Compute Engine API, which is a prerequisite)
+echo "Enabling necessary APIs..."
+gcloud services enable batch.googleapis.com compute.googleapis.com \
+    --project="$PROJECT_ID"
+
+# 2. Create a "default" VPC network 
+# (An auto-mode network automatically creates subnets in all regions, including us-central1)
+echo "Creating 'default' VPC network..."
+gcloud compute networks create default \
+    --subnet-mode=auto \
+    --project="$PROJECT_ID" || true
+
+# 3. Turn on Private Google Access for the us-central1 subnet
+echo "Enabling Private Google Access for us-central1..."
+gcloud compute networks subnets update default \
+    --region=us-central1 \
+    --enable-private-ip-google-access \
+    --project="$PROJECT_ID"
+
+# 4. Create an egress firewall rule for the Batch Agent
+# This ensures the VM can reach out to Google APIs on port 443 even if standard egress is blocked
+echo "Creating egress firewall rule for TCP 443..."
+gcloud compute firewall-rules create allow-batch-agent-egress \
+    --network=default \
+    --direction=EGRESS \
+    --action=ALLOW \
+    --destination-ranges=0.0.0.0/0 \
+    --rules=tcp:443 \
+    --description="Allows Google Batch agent to communicate with Google APIs" \
+    --project="$PROJECT_ID" || true
+
+# 5. Find the Compute Engine default service account
+echo "Locating the Compute Engine default service account..."
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+echo "Found Service Account: $COMPUTE_SA"
+
+# 6. Grant the required IAM permissions to the service account
+echo "Applying IAM roles..."
+
+# Batch Agent Reporter (Critical for the VM to report status)
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:$COMPUTE_SA" \
+    --role="roles/batch.agentReporter" \
+    --condition=None > /dev/null
+
+# Logs Writer (Critical for stdout/stderr logs from the container)
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:$COMPUTE_SA" \
+    --role="roles/logging.logWriter" \
+    --condition=None > /dev/null
+
+# Storage Object Admin (Critical for mounting GCS buckets)
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:$COMPUTE_SA" \
+    --role="roles/storage.objectAdmin" \
+    --condition=None > /dev/null
+
+echo "Setup complete! The project $PROJECT_ID is ready for Google Batch."
+```
