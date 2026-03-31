@@ -9,6 +9,7 @@ import click
 from google.cloud import batch_v1
 
 from .shared_components import (
+    _assert_gcs_bucket_exists,
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
@@ -462,44 +463,49 @@ def submit_batch_component(
     else:
         print(" No GCS output bucket detected, using local storage only")
 
-    # If config is a local path, upload it to GCS staging so the Batch VM can access it
-    if not config.startswith("gs://"):
-        bucket_for_staging = output_gcs_bucket or staging_bucket
-        if not bucket_for_staging:
-            raise ValueError(
-                "Local config file provided but no GCS bucket is available for staging. "
-                "Either add a gs:// default_root_dir to your config or pass "
-                "--staging-bucket gs://my-bucket/path."
+    if not dry_run:
+        # Verify the output bucket is reachable before uploading config or submitting
+        if output_gcs_bucket:
+            _assert_gcs_bucket_exists(output_gcs_bucket)
+
+        # If config is a local path, upload it to GCS staging so the Batch VM can access it
+        if not config.startswith("gs://"):
+            bucket_for_staging = output_gcs_bucket or staging_bucket
+            if not bucket_for_staging:
+                raise ValueError(
+                    "Local config file provided but no GCS bucket is available for staging. "
+                    "Either add a gs:// default_root_dir to your config or pass "
+                    "--staging-bucket gs://my-bucket/path."
+                )
+            import gcsfs as _gcsfs
+
+            fs = _gcsfs.GCSFileSystem()
+            staged_config_path = (
+                f"{bucket_for_staging.rstrip('/')}/staging/configs/{job_name}.yaml"
             )
-        import gcsfs as _gcsfs
+            fs.put(config, staged_config_path)
+            print(f" Uploaded local config to GCS staging: {staged_config_path}")
+            config = staged_config_path
 
-        fs = _gcsfs.GCSFileSystem()
-        staged_config_path = (
-            f"{bucket_for_staging.rstrip('/')}/staging/configs/{job_name}.yaml"
-        )
-        fs.put(config, staged_config_path)
-        print(f" Uploaded local config to GCS staging: {staged_config_path}")
-        config = staged_config_path
+        # Pre-flight: check that the Batch SA can access the data bucket, and the first file exists
+        data_bucket = extract_data_gcs_bucket_from_config(config)
+        if data_bucket:
+            assert_gcs_bucket_accessible_as_service_account(project, data_bucket)
+            assert_data_first_file_exists(config)
 
-    # Pre-flight: check that the Batch SA can access the data bucket, and the first file exists
-    data_bucket = extract_data_gcs_bucket_from_config(config)
-    if data_bucket:
-        assert_gcs_bucket_accessible_as_service_account(project, data_bucket)
-        assert_data_first_file_exists(config)
+        # Validate tool name against upstream CLI registry
+        url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
+        cli_tool_names = get_allowed_cli_tool_names(url)
+        if cli_tool_names is not None:
+            if tool not in cli_tool_names:
+                raise ValueError(
+                    f"Tool '{tool}' not found in allowed CLI tools at {url}.\n"
+                    f"Allowed tool names:\n{cli_tool_names}"
+                )
 
     data_gcs_glob_uri = (
         extract_data_gcs_glob_from_config(config) if copy_data_to_local_disk else ""
     )
-
-    # Validate tool name
-    url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
-    cli_tool_names = get_allowed_cli_tool_names(url)
-    if cli_tool_names is not None:
-        if tool not in cli_tool_names:
-            raise ValueError(
-                f"Tool '{tool}' not found in allowed CLI tools at {url}.\n"
-                f"Allowed tool names:\n{cli_tool_names}"
-            )
 
     # Handle GPU settings
     if accelerator_count == 0:

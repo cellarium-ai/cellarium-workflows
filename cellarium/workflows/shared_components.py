@@ -263,7 +263,6 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
         # Check if it's a GCS path
         if default_root_dir.startswith("gs://"):
             print(f" Detected GCS output path: {default_root_dir}")
-            _assert_gcs_bucket_exists(default_root_dir)
             return default_root_dir
         elif default_root_dir.startswith("/gcs/"):
             # Convert /gcs/bucket/path format to gs://bucket/path
@@ -274,7 +273,6 @@ def extract_output_gcs_bucket_from_config(config_path: str) -> str:
             else:
                 gcs_url = f"gs://{gcs_path}"
             print(f" Detected GCS output path: {default_root_dir} -> {gcs_url}")
-            _assert_gcs_bucket_exists(gcs_url)
             return gcs_url
         else:
             print(f" Local output path detected: {default_root_dir}")
