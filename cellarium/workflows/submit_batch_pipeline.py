@@ -166,7 +166,9 @@ def create_batch_pipeline_jobs(
         # is why bus errors only appear when running containerised.
         shm_gb = max(1, (memory_mib * 3) // (1024 * 4))
         container.options = f"--shm-size={shm_gb}g"
-        print(f" Configured container with shared memory size: {shm_gb}GB (~75% of {memory_mib // 1024}GB RAM) for job {job_name}")
+        print(
+            f" Configured container with shared memory size: {shm_gb}GB (~75% of {memory_mib // 1024}GB RAM) for job {job_name}"
+        )
 
         # GPU access is automatically configured by Google Cloud Batch when GPUs are allocated
         accelerator_count = component_def.get(
