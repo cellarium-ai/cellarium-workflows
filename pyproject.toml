@@ -45,7 +45,11 @@ train_op = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["cellarium.workflows"]
+include = ["cellarium*"]
+
+[tool.setuptools.package-data]
+"cellarium.workflows.scripts" = ["*.sh"]
+"cellarium.workflows.example" = ["*.yaml"]
 
 [project.scripts]
 cellarium-workflow = "cellarium.workflows.cli:cli"
