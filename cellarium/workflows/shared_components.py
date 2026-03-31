@@ -285,13 +285,24 @@ def prepare_config_with_overrides(
     if not matched:
         raise FileNotFoundError(f"No extract_*.h5ad files found under {prefix}")
 
-    def _shard_index(p: str) -> int:
+    def _shard_digits(p: str) -> str:
+        """Return the raw digit string from an extract filename (preserves leading zeros)."""
         m = _re.search(r"extract_(\d+)\.h5ad$", p)
-        return int(m.group(1)) if m else -1
+        return m.group(1) if m else ""
+
+    def _shard_index(p: str) -> int:
+        d = _shard_digits(p)
+        return int(d) if d else -1
 
     matched = sorted(matched, key=_shard_index)
-    last_idx = _shard_index(matched[-1])
-    filenames = f"{prefix}/extract_{{0..{last_idx}}}.h5ad"
+    first_digits = _shard_digits(matched[0])
+    last_digits = _shard_digits(matched[-1])
+    # Preserve leading-zero padding: width is taken from the first filename
+    width = len(first_digits)
+    last_idx = int(last_digits)
+    start_fmt = first_digits                       # e.g. "0" or "000000"
+    end_fmt = str(last_idx).zfill(width)           # e.g. "9446" or "009446"
+    filenames = f"{prefix}/extract_{{{start_fmt}..{end_fmt}}}.h5ad"
 
     def _obs_count(gcs_path: str) -> int:
         with fs.open(gcs_path, "rb") as raw:
