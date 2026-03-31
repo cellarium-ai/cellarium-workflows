@@ -6,31 +6,37 @@ trainer:
     init_args:
       broadcast_buffers: false
   max_epochs: 2
-  default_root_dir: /tmp/test_examples/hvg_seurat_v3
+  default_root_dir: gs://cellarium-dev-central/workflows/20260331_czi_human_primary_20251108_gte300genes_hvg_seurat_v3
 model:
   model:
     class_path: cellarium.ml.models.HVGSeuratV3
     init_args:
-      n_top_genes: 200
+      n_top_genes: 8000
+      use_batch_key: true
+      flavor: seurat_v3
       output_path: null
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: https://storage.googleapis.com/dsp-cellarium-cas-public/test-data/test_{0..3}.h5ad
-      shard_size: 100
-      last_shard_size: 100
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..009446}.h5ad
+      shard_size: 10_000
+      last_shard_size: 6707
       max_cache_size: 2
       cache_size_strictly_enforced: true
       indices_strict: true
-      obs_columns_to_validate: []
+      obs_columns_to_validate:
+        - assay_suspension_type
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
     var_names_g:
       attr: var_names
-  batch_size: 100
+    batch_index_n:
+      attr: obs
+      key: assay_suspension_type
+  batch_size: 5000
   iteration_strategy: cache_efficient
-  num_workers: 2
+  num_workers: 8
   
