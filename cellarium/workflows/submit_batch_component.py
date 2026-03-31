@@ -458,8 +458,11 @@ def submit_batch_component(
                 "--staging-bucket gs://my-bucket/path."
             )
         import gcsfs as _gcsfs
+
         fs = _gcsfs.GCSFileSystem()
-        staged_config_path = f"{bucket_for_staging.rstrip('/')}/staging/configs/{job_name}.yaml"
+        staged_config_path = (
+            f"{bucket_for_staging.rstrip('/')}/staging/configs/{job_name}.yaml"
+        )
         fs.put(config, staged_config_path)
         print(f" Uploaded local config to GCS staging: {staged_config_path}")
         config = staged_config_path

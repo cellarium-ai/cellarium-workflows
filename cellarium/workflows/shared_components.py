@@ -65,7 +65,9 @@ def extract_data_gcs_bucket_from_config(config_path: str) -> str:
         return ""
 
 
-def assert_gcs_bucket_accessible_as_service_account(project: str, bucket_name: str) -> None:
+def assert_gcs_bucket_accessible_as_service_account(
+    project: str, bucket_name: str
+) -> None:
     """
     Verify that the Compute Engine default service account can access a GCS bucket.
 
@@ -167,7 +169,7 @@ def assert_data_first_file_exists(config_path: str) -> None:
 
         filenames = match.group(1).strip()
         if not filenames.startswith("gs://"):
-            print(f" Filenames is not a GCS path — skipping file existence check")
+            print(" Filenames is not a GCS path — skipping file existence check")
             return
 
         # Resolve {START..END} brace expansion to START, preserving leading zeros
@@ -300,8 +302,8 @@ def prepare_config_with_overrides(
     # Preserve leading-zero padding: width is taken from the first filename
     width = len(first_digits)
     last_idx = int(last_digits)
-    start_fmt = first_digits                       # e.g. "0" or "000000"
-    end_fmt = str(last_idx).zfill(width)           # e.g. "9446" or "009446"
+    start_fmt = first_digits  # e.g. "0" or "000000"
+    end_fmt = str(last_idx).zfill(width)  # e.g. "9446" or "009446"
     filenames = f"{prefix}/extract_{{{start_fmt}..{end_fmt}}}.h5ad"
 
     def _obs_count(gcs_path: str) -> int:
