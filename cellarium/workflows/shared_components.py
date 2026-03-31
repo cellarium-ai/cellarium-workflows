@@ -93,9 +93,8 @@ def extract_data_gcs_glob_from_config(config_path: str) -> str:
         if not filenames.startswith("gs://"):
             return ""
 
-        glob_uri = re.sub(r"\{\d+\.\.\d+\}", "*", filenames)
-        print(f" Data GCS glob URI: {glob_uri}")
-        return glob_uri
+        print(f" Data GCS filenames: {filenames}")
+        return filenames
 
     except Exception as e:
         print(f" Warning: Could not parse config for data GCS glob: {e}")

@@ -117,7 +117,7 @@ def create_batch_job_spec(
             echo " Source: {data_gcs_glob_uri}"
             echo " Dest:   {local_data_dir}/"
             df -h "{local_data_dir}" || true
-            gsutil -m cp "{data_gcs_glob_uri}" "{local_data_dir}/"
+            gsutil -m cp {data_gcs_glob_uri} "{local_data_dir}/"
             touch "{sentinel_path}"
             echo " Download complete. Sentinel written to {sentinel_path}"
             df -h "{local_data_dir}"
