@@ -227,6 +227,69 @@ def assert_data_first_file_exists(config_path: str) -> None:
         print(f" Warning: Could not check data file existence: {e}")
 
 
+def extract_ckpt_path_from_config(config_path: str) -> str:
+    """
+    Extract the ckpt_path value from a Lightning CLI config YAML.
+
+    Args:
+        config_path: Path to the config YAML file (local or gs://)
+
+    Returns:
+        The raw ckpt_path string if present and not null, otherwise an empty string.
+    """
+    import re
+
+    try:
+        if config_path.startswith("gs://"):
+            fs = gcsfs.GCSFileSystem()
+            with fs.open(config_path, "r") as f:
+                content = f.read()
+        else:
+            with open(config_path, "r") as f:
+                content = f.read()
+
+        match = re.search(r"^ckpt_path:\s*([^\s\n]+)", content, re.MULTILINE)
+        if not match:
+            return ""
+
+        value = match.group(1).strip()
+        if value.lower() in ("null", "~", ""):
+            return ""
+
+        return value
+
+    except Exception as e:
+        print(f" Warning: Could not parse config for ckpt_path: {e}")
+        return ""
+
+
+def assert_ckpt_path_exists(ckpt_path: str) -> None:
+    """
+    Verify that the checkpoint file referenced by ckpt_path exists in GCS.
+
+    Args:
+        ckpt_path: GCS path to the checkpoint file (gs://...)
+
+    Raises:
+        FileNotFoundError: If the checkpoint file does not exist
+    """
+    if not ckpt_path or ckpt_path.lower() in ("null", "~"):
+        return
+
+    if not ckpt_path.startswith("gs://"):
+        print(f" ckpt_path is not a GCS path, skipping existence check: {ckpt_path}")
+        return
+
+    print(f" Checking ckpt_path exists: {ckpt_path}")
+    fs = gcsfs.GCSFileSystem()
+    if not fs.exists(ckpt_path):
+        raise FileNotFoundError(
+            f" Checkpoint file does not exist: {ckpt_path}\n"
+            " Check for typos in ckpt_path in your config."
+        )
+    print(f" Checkpoint file exists: {ckpt_path}")
+
+
 def extract_output_gcs_bucket_from_config(config_path: str) -> str:
     """
     Extract the output GCS bucket path from the config file's trainer.default_root_dir.
@@ -836,6 +899,18 @@ if mounted_gcs_path:
     modified_content = config_content.replace(mounted_gcs_path, local_output_path)
     modified_content = modified_content.replace(gcs_local_path, local_output_path)
     print(f" Replacing {{mounted_gcs_path}} (and {{gcs_local_path}}) with {{local_output_path}} in config")
+
+    # Restore the original ckpt_path line so Lightning can stream the checkpoint
+    # directly from GCS via gcsfs/fsspec — it must NOT be rewritten to a local path
+    # that doesn't exist on the VM.
+    import re as _re
+    _ckpt_match = _re.search(r"^ckpt_path:.*$", config_content, _re.MULTILINE)
+    if _ckpt_match:
+        _original_ckpt_line = _ckpt_match.group(0)
+        modified_content = _re.sub(
+            r"^ckpt_path:.*$", _original_ckpt_line, modified_content, flags=_re.MULTILINE
+        )
+        print(f" Preserved original ckpt_path line: {{_original_ckpt_line}}")
 
     replaced = (mounted_gcs_path in config_content) or (gcs_local_path in config_content)
     if replaced:

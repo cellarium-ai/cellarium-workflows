@@ -19,6 +19,8 @@ from .shared_components import (
     extract_data_gcs_glob_from_config,
     assert_gcs_bucket_accessible_as_service_account,
     assert_data_first_file_exists,
+    extract_ckpt_path_from_config,
+    assert_ckpt_path_exists,
     prepare_config_with_overrides,
 )
 
@@ -492,6 +494,11 @@ def submit_batch_component(
         if data_bucket:
             assert_gcs_bucket_accessible_as_service_account(project, data_bucket)
             assert_data_first_file_exists(config)
+
+        # Pre-flight: verify the checkpoint file exists in GCS if ckpt_path is set
+        ckpt_path = extract_ckpt_path_from_config(config)
+        if ckpt_path:
+            assert_ckpt_path_exists(ckpt_path)
 
         # Validate tool name against upstream CLI registry
         url = f"https://raw.githubusercontent.com/cellarium-ai/cellarium-ml/{git_sha}/cellarium/ml/cli.py"
