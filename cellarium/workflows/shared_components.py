@@ -893,30 +893,29 @@ if mounted_gcs_path:
     # Also build the /gcs/ form for configs that use that convention
     gcs_local_path = '/gcs/' + mounted_gcs_path[5:]  # Remove 'gs://' and add '/gcs/'
 
-    # Replace both gs:// and /gcs/ forms of the GCS run directory with the local
-    # output path. This lets users write output_path: gs://bucket/run_dir/file.csv
-    # in their config and have it transparently land on local SSD (then synced to GCS).
-    modified_content = config_content.replace(mounted_gcs_path, local_output_path)
-    modified_content = modified_content.replace(gcs_local_path, local_output_path)
-    print(f" Replacing {{mounted_gcs_path}} (and {{gcs_local_path}}) with {{local_output_path}} in config")
-
-    # Restore the original ckpt_path line so Lightning can stream the checkpoint
-    # directly from GCS via gcsfs/fsspec — it must NOT be rewritten to a local path
-    # that doesn't exist on the VM.
+    # Rewrite ONLY the trainer.default_root_dir key so Lightning writes artifacts
+    # to local SSD (the rsync sidecar then pushes them to GCS).
+    # All other GCS paths — ckpt_path, filenames, !FileLoader file_path, etc. —
+    # are intentionally left as gs:// so Lightning/gcsfs can stream them directly.
+    # (data.dadc.init_args.filenames is rewritten separately by data_download.py
+    # when copy_data_to_local_disk=True.)
     import re as _re
-    _ckpt_match = _re.search(r"^ckpt_path:.*$", config_content, _re.MULTILINE)
-    if _ckpt_match:
-        _original_ckpt_line = _ckpt_match.group(0)
-        modified_content = _re.sub(
-            r"^ckpt_path:.*$", _original_ckpt_line, modified_content, flags=_re.MULTILINE
-        )
-        print(f" Preserved original ckpt_path line: {{_original_ckpt_line}}")
+    modified_content = _re.sub(
+        r'(?m)(^\s*default_root_dir:\s*)' + _re.escape(mounted_gcs_path),
+        lambda m: m.group(1) + local_output_path,
+        config_content,
+    )
+    modified_content = _re.sub(
+        r'(?m)(^\s*default_root_dir:\s*)' + _re.escape(gcs_local_path),
+        lambda m: m.group(1) + local_output_path,
+        modified_content,
+    )
 
-    replaced = (mounted_gcs_path in config_content) or (gcs_local_path in config_content)
+    replaced = local_output_path in modified_content
     if replaced:
-        print(f" Successfully updated GCS paths in config")
+        print(f" Redirected default_root_dir -> {{local_output_path}}")
     else:
-        print("ℹ No matching GCS paths found in config - no substitution needed")
+        print(" default_root_dir did not match mounted_gcs_path — no substitution made")
 
     # Write modified config to a temporary file
     temp_config = '/tmp/modified_config.yaml'
