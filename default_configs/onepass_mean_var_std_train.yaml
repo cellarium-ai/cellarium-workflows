@@ -1,0 +1,43 @@
+# lightning.pytorch==2.5.2
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: gs://cellarium-dev-central/workflows/20260402_human_onepass
+model:
+  transforms:
+    - cellarium.ml.transforms.NormalizeTotal
+    - cellarium.ml.transforms.Log1p
+  model:
+    class_path: cellarium.ml.models.OnePassMeanVarStd
+    init_args:
+      algorithm: shifted_data
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..000050}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+      obs_columns_to_validate:
+        - raw_sum
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+    total_mrna_umis_n:
+      attr: obs
+      key: raw_sum
+  batch_size: 5000
+  num_workers: 8  # limited by memory on n1-standard-16
+  prefetch_factor: 4
+  persistent_workers: false
+ckpt_path: null
