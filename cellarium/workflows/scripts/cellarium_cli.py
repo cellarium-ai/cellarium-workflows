@@ -225,11 +225,14 @@ def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
 
         print(f"Syncing {len(files_to_upload)} task output file(s) to {gcs_dest} ...")
         fs = gcsfs.GCSFileSystem()
-        for local_file in files_to_upload:
+        for i, local_file in enumerate(files_to_upload):
             rel = os.path.relpath(local_file, TASK_OUTPUT_DIR)
             gcs_file = f"{gcs_dest.rstrip('/')}/{rel}"
             fs.put(local_file, gcs_file)
-            print(f" Uploaded {rel} -> {gcs_file}")
+            if i < 10:
+                print(f" Uploaded {rel} -> {gcs_file}")
+            if i == 10:
+                print(f" ... and {len(files_to_upload) - 10} more")
 
         print("Task output sync complete")
     except Exception as e:
