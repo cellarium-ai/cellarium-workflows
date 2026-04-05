@@ -105,9 +105,9 @@ else:
             future.result() for future in concurrent.futures.as_completed(futures)
         ]
 
-print("Listing local .h5ad files:")
+print("Listing local .h5ad files (at most 10):")
 h5ad_files = glob.glob(os.path.join(LOCAL_DATA_DIR, "*.h5ad"))
-print("\n".join(h5ad_files))
+print("\n".join(h5ad_files[:10]))
 
 # 3. rewrite the config file to point to the local data
 if isinstance(original_data_reference, str):

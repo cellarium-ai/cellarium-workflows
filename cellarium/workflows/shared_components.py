@@ -809,34 +809,53 @@ chmod +x /tmp/batch_setup.sh
 /tmp/batch_setup.sh
 
 # Write a Python GCS sync helper using gcsfs (gsutil is not present in the ML container image).
+# Incremental: tracks (size, mtime) of already-uploaded files in /tmp/gcs_sync_state.json
+# so that unchanged files are skipped on subsequent runs.
 cat > /tmp/gcs_sync.py << 'SYNC_EOF'
 #!/usr/bin/env python3
-import os, sys, gcsfs
+import json, os, sys, gcsfs
 local_dir, gcs_dest = sys.argv[1], sys.argv[2].rstrip("/")
 if not os.path.isdir(local_dir):
     sys.exit(0)
+state_file = "/tmp/gcs_sync_state.json"
+try:
+    with open(state_file) as _f:
+        state = json.load(_f)
+except (FileNotFoundError, json.JSONDecodeError):
+    state = {{}}
 fs = gcsfs.GCSFileSystem()
-synced = 0
+synced = skipped = 0
 for root, _dirs, files in os.walk(local_dir):
     for fname in files:
         src = os.path.join(root, fname)
         rel = os.path.relpath(src, local_dir)
+        st = os.stat(src)
+        key = rel
+        if state.get(key) == [st.st_size, st.st_mtime]:
+            skipped += 1
+            continue
         dst = f"{{gcs_dest}}/{{rel}}"
         try:
             fs.put(src, dst)
+            state[key] = [st.st_size, st.st_mtime]
             synced += 1
         except Exception as e:
             print(f"  Warning: could not sync {{rel}}: {{e}}", file=sys.stderr)
-print(f"  Synced {{synced}} file(s) from {{local_dir}} to {{gcs_dest}}")
+try:
+    with open(state_file, "w") as _f:
+        json.dump(state, _f)
+except Exception as e:
+    print(f"  Warning: could not write sync state: {{e}}", file=sys.stderr)
+print(f"  Synced {{synced}} file(s), skipped {{skipped}} unchanged from {{local_dir}} to {{gcs_dest}}")
 SYNC_EOF
 
 # Start background GCS sync sidecar (non-fatal; training continues regardless of errors)
 RSYNC_PID=""
 if [ -n "$MOUNTED_GCS_PATH" ]; then
-    echo " Starting sync sidecar: $LOCAL_OUTPUT_DIR -> $MOUNTED_GCS_PATH (every 60s)"
+    echo " Starting sync sidecar: $LOCAL_OUTPUT_DIR -> $MOUNTED_GCS_PATH (every 5 mins)"
     while true; do
         python3 /tmp/gcs_sync.py "$LOCAL_OUTPUT_DIR" "$MOUNTED_GCS_PATH" 2>/dev/null || true
-        sleep 60
+        sleep 300
     done &
     RSYNC_PID=$!
 fi
