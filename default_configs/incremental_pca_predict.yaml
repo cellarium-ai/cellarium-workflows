@@ -5,9 +5,13 @@ trainer:
     class_path: lightning.pytorch.strategies.DDPStrategy
     dict_kwargs:
       broadcast_buffers: false
+  callbacks:
+  - class_path: cellarium.ml.callbacks.PredictionWriter
+    init_args:
+      output_dir: .
   max_epochs: 1
   logger: null
-  default_root_dir: gs://cellarium-dev-central/workflows/20260403_cas_pca
+  default_root_dir: gs://cellarium-dev-central/workflows/20260403_cas_pca_predict
 model:
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
@@ -57,8 +61,11 @@ data:
     var_names_g:
       attr: var
       key: feature_id
+    obs_names_n:
+      attr: obs_names
   batch_size: 5000
   num_workers: 8  # limited by memory on n1-standard-16
   prefetch_factor: 4
   persistent_workers: false
-ckpt_path: null
+return_predictions: false
+ckpt_path: gs://cellarium-dev-central/workflows/20260403_cas_pca/lightning_logs/version_0/checkpoints/epoch=0-step=17681.ckpt

@@ -7,11 +7,8 @@ trainer:
       broadcast_buffers: false
   max_epochs: 1
   logger: null
-  default_root_dir: gs://cellarium-dev-central/workflows/20260403_cas_onepass
+  default_root_dir: gs://cellarium-dev-central/workflows/20260403_bican_raw_onepass
 model:
-  transforms:
-    - cellarium.ml.transforms.NormalizeTotal
-    - cellarium.ml.transforms.Log1p
   model:
     class_path: cellarium.ml.models.OnePassMeanVarStd
     init_args:
@@ -20,18 +17,19 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000050}.h5ad
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes/extract_files/extract_{000000..000050}.h5ad
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2
+      obs_columns_to_validate: []
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
     var_names_g:
       attr: var
-      key: feature_id
-      # key: gene_id
+      # key: feature_id
+      key: gene_id
   batch_size: 5000
   num_workers: 8  # limited by memory on n1-standard-16
   prefetch_factor: 4
