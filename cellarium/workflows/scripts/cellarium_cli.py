@@ -198,11 +198,25 @@ def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
         return
 
     try:
+        # List up to 10 files in TASK_OUTPUT_DIR so they appear in logs before upload
+        print(f"Contents of task output dir ({TASK_OUTPUT_DIR}):")
+        all_task_files = []
+        for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
+            for fname in files:
+                all_task_files.append(os.path.relpath(os.path.join(root, fname), TASK_OUTPUT_DIR))
+        if all_task_files:
+            for f in all_task_files[:10]:
+                print(f"  {f}")
+            if len(all_task_files) > 10:
+                print(f"  ... and {len(all_task_files) - 10} more")
+        else:
+            print("  (empty)")
+
         files_to_upload = []
         for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
             for fname in files:
-                _, ext = os.path.splitext(fname)
-                if ext.lower() in _TASK_OUTPUT_EXTENSIONS:
+                from pathlib import Path as _Path
+                if any(s.lower() in _TASK_OUTPUT_EXTENSIONS for s in _Path(fname).suffixes):
                     files_to_upload.append(os.path.join(root, fname))
 
         if not files_to_upload:
