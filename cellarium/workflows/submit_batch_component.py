@@ -336,8 +336,8 @@ def create_batch_job_spec(
 )
 @click.option(
     "--machine-type",
-    default="n1-standard-4",
-    help="Machine type for the training job, e.g. 'n1-standard-4'.",
+    default="n1-standard-16",
+    help="Machine type for the training job, e.g. 'n1-standard-16'.",
 )
 @click.option(
     "--accelerator-type",
