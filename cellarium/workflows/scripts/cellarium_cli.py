@@ -203,7 +203,9 @@ def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
         all_task_files = []
         for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
             for fname in files:
-                all_task_files.append(os.path.relpath(os.path.join(root, fname), TASK_OUTPUT_DIR))
+                all_task_files.append(
+                    os.path.relpath(os.path.join(root, fname), TASK_OUTPUT_DIR)
+                )
         if all_task_files:
             for f in all_task_files[:10]:
                 print(f"  {f}")
@@ -216,7 +218,10 @@ def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
         for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
             for fname in files:
                 from pathlib import Path as _Path
-                if any(s.lower() in _TASK_OUTPUT_EXTENSIONS for s in _Path(fname).suffixes):
+
+                if any(
+                    s.lower() in _TASK_OUTPUT_EXTENSIONS for s in _Path(fname).suffixes
+                ):
                     files_to_upload.append(os.path.join(root, fname))
 
         if not files_to_upload:
