@@ -13,6 +13,7 @@ from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
+    create_post_upload_runnable,
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
     extract_data_gcs_bucket_from_config,
@@ -162,6 +163,20 @@ def create_batch_job_spec(
         runnable.environment.variables[key] = value
 
     task_spec_runnables.append(runnable)
+
+    # Post-container runnable: host-VM bash that bulk-uploads task outputs via gsutil.
+    # Runs after the Docker container exits so it can use the VM's native gsutil
+    # for fast parallel upload (gsutil -m cp -r) instead of per-file gcsfs inside
+    # the container.  Skipped when no SSD or no output bucket is configured.
+    if local_ssd_size_gb > 0 and output_gcs_bucket:
+        ssd_task_dir = "/mnt/disks/local-ssd/task_outputs"
+        task_output_gcs_dest = f"{output_gcs_bucket.rstrip('/')}/task_outputs"
+        post_runnable = create_post_upload_runnable(ssd_task_dir, task_output_gcs_dest)
+        task_spec_runnables.append(post_runnable)
+        print(
+            f" Added post-container upload runnable: gsutil -m cp -r {ssd_task_dir} -> {task_output_gcs_dest}/"
+        )
+
     task_spec.runnables = task_spec_runnables
 
     # Task volumes (local SSD only — GCS sync is handled by the rsync sidecar in the batch script)
@@ -363,7 +378,7 @@ def create_batch_job_spec(
 )
 @click.option(
     "--base-image",
-    default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:cellarium-gpt-cstorch",
+    default="us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:0.0.8",
     help="Base image for the component.",
 )
 @click.option(

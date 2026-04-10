@@ -743,6 +743,46 @@ def get_batch_setup_script() -> str:
     return _load_bash_script_as_string("batch_setup")
 
 
+def create_post_upload_runnable(ssd_task_dir: str, gcs_dest: str):
+    """Return a host-VM bash runnable that bulk-uploads task outputs to GCS.
+
+    Runs *after* the Docker container exits, on the bare VM where ``gsutil`` is
+    available.  Uses ``gsutil -m cp -r`` for parallel upload — orders of magnitude
+    faster than per-file gcsfs uploads for large prediction outputs.
+
+    Args:
+        ssd_task_dir: Absolute path on the VM's local SSD where the container
+            wrote task output files (e.g. ``/mnt/disks/local-ssd/task_outputs``).
+        gcs_dest: GCS destination prefix, e.g. ``gs://my-bucket/run/task_outputs``.
+    """
+    import textwrap
+    from google.cloud import batch_v1 as _batch_v1
+
+    script = textwrap.dedent(f"""
+        #!/bin/bash
+        echo "Post-run task output upload: {ssd_task_dir} -> {gcs_dest}"
+        if [ ! -d "{ssd_task_dir}" ]; then
+            echo " Task output dir not found, nothing to upload."
+            exit 0
+        fi
+        shopt -s nullglob
+        files=("{ssd_task_dir}"/*)
+        shopt -u nullglob
+        if [ ${{#files[@]}} -eq 0 ]; then
+            echo " Task output dir is empty, nothing to upload."
+            exit 0
+        fi
+        echo " Uploading ${{#files[@]}} top-level entries..."
+        gsutil -m cp -r "{ssd_task_dir}"/* "{gcs_dest}/"
+        echo " Task output upload complete."
+    """).strip()
+
+    runnable = _batch_v1.Runnable()
+    runnable.script = _batch_v1.Runnable.Script()
+    runnable.script.text = script
+    return runnable
+
+
 def create_batch_script(
     tool: str,
     subcommand: str,

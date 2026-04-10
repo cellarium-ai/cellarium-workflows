@@ -11,7 +11,7 @@ trainer:
       output_dir: .
   max_epochs: 1
   logger: null
-  default_root_dir: gs://cellarium-dev-central/workflows/20260403_cas_pca_predict
+  default_root_dir: gs://cellarium-dev-central/workflows/20260409_cas_pca_predict_vsindex
 model:
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
@@ -40,6 +40,7 @@ model:
           loader_fn: pandas.read_csv
           attr: "feature_id"
           convert_fn: pandas.Series.to_list
+        ordering: false
   model:
     class_path: cellarium.ml.models.IncrementalPCA
     init_args:
@@ -49,7 +50,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000050}.h5ad
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000200}.h5ad
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2
@@ -63,8 +64,9 @@ data:
       key: feature_id
     obs_names_n:
       attr: obs_names
-  batch_size: 5000
-  num_workers: 8  # limited by memory on n1-standard-16
+  batch_size: 10000
+  shuffle: false
+  num_workers: 4  # limited by memory on n1-standard-16
   prefetch_factor: 4
   persistent_workers: false
 return_predictions: false

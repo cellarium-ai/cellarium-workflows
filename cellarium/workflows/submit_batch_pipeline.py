@@ -12,6 +12,7 @@ from .shared_components import (
     get_current_google_user,
     get_allowed_cli_tool_names,
     create_batch_script,
+    create_post_upload_runnable,
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
     prepare_config_with_overrides,
@@ -119,11 +120,19 @@ def create_batch_pipeline_jobs(
                 f" No output GCS bucket detected for job {job_name}, using local storage"
             )
 
-        # Note: Local SSD will be automatically mounted at /mnt/disks/local-ssd
-        # when attached via allocation policy - no volume configuration needed
-        print(
-            f" Local SSD configured for job {job_name}: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd (auto-mounted)"
-        )
+        # Local SSD must be added as a Volume so Batch formats and mounts it at the
+        # specified mount_path before any runnable starts (including host-VM bash runnables).
+        if local_ssd_size_gb > 0:
+            ssd_volume = batch_v1.Volume()
+            ssd_volume.device_name = "local-ssd"  # must match attached_disk.device_name
+            ssd_volume.mount_path = "/mnt/disks/local-ssd"
+            ssd_volume.mount_options = ["rw,async"]
+            task_volumes.append(ssd_volume)
+            print(
+                f" Local SSD configured for job {job_name}: {local_ssd_size_gb}GB -> /mnt/disks/local-ssd"
+            )
+        else:
+            print(f" Local SSD disabled for job {job_name}, using boot disk only")
 
         # Set volumes on task spec
         if task_volumes:
@@ -166,6 +175,21 @@ def create_batch_pipeline_jobs(
             runnable.environment.variables[key] = value
 
         task_spec.runnables = [runnable]
+
+        # Post-container runnable: host-VM bash that bulk-uploads task outputs via gsutil.
+        # Runs after the Docker container exits so it can use the VM's native gsutil
+        # for fast parallel upload (gsutil -m cp -r) instead of per-file gcsfs.
+        if local_ssd_size_gb > 0 and detected_bucket:
+            ssd_task_dir = "/mnt/disks/local-ssd/task_outputs"
+            task_output_gcs_dest = f"{detected_bucket.rstrip('/')}/task_outputs"
+            post_runnable = create_post_upload_runnable(
+                ssd_task_dir, task_output_gcs_dest
+            )
+            task_spec.runnables = [runnable, post_runnable]
+            print(
+                f" Added post-container upload runnable for {job_name}: "
+                f"gsutil -m cp -r {ssd_task_dir} -> {task_output_gcs_dest}/"
+            )
 
         # Set compute resources based on machine type (already resolved above)
         compute_resource = batch_v1.ComputeResource()

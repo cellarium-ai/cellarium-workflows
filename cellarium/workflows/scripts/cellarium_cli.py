@@ -150,28 +150,15 @@ def capture_logs_to_files(stdout_file, stderr_file):
 
 
 # Staging directory for bare-filename task outputs (e.g. output_path: results.csv).
-# The training process runs with CWD set here so relative paths land in one place.
-TASK_OUTPUT_DIR = "/tmp/cellarium_task_outputs"
-
-# Extensions treated as task output artifacts rather than framework internals.
-# Anything not in this set (checkpoints, yamls, logs, etc.) is left alone.
-_TASK_OUTPUT_EXTENSIONS = {
-    ".csv",
-    ".tsv",
-    ".parquet",
-    ".feather",
-    ".h5ad",
-    ".h5",
-    ".hdf5",
-    ".json",
-    ".jsonl",
-    ".npz",
-    ".npy",
-    ".pkl",
-    ".pickle",
-    ".txt",
-    ".zarr",
-}
+# Placed on the local SSD when available so the post-container host-VM runnable can
+# sweep it up with `gsutil -m cp -r`.  Falls back to /tmp when no SSD is mounted
+# (in which case post-run GCS upload is skipped — handled by the caller).
+_SSD_MOUNT = "/mnt/disks/local-ssd"
+TASK_OUTPUT_DIR = (
+    f"{_SSD_MOUNT}/task_outputs"
+    if os.path.ismount(_SSD_MOUNT)
+    else "/tmp/cellarium_task_outputs"
+)
 
 
 def setup_task_output_dir() -> str:
@@ -184,64 +171,12 @@ def setup_task_output_dir() -> str:
     os.makedirs(TASK_OUTPUT_DIR, exist_ok=True)
     os.chdir(TASK_OUTPUT_DIR)
     print(f" Task output staging dir: {TASK_OUTPUT_DIR} (CWD changed)")
+    if not os.path.ismount(_SSD_MOUNT):
+        print(
+            f" WARNING: local SSD not mounted at {_SSD_MOUNT}; "
+            "task outputs will NOT be uploaded by the post-run gsutil step."
+        )
     return TASK_OUTPUT_DIR
-
-
-def sync_task_outputs_to_gcs(gcs_dest: str) -> None:
-    """Upload data-output files from TASK_OUTPUT_DIR to gcs_dest.
-
-    Only files whose extension is in ``_TASK_OUTPUT_EXTENSIONS`` are uploaded,
-    so framework files (checkpoints, yamls, logs) are ignored.
-    """
-    if not gcs_dest:
-        print("sync_task_outputs_to_gcs: no GCS destination configured, skipping")
-        return
-
-    try:
-        # List up to 10 files in TASK_OUTPUT_DIR so they appear in logs before upload
-        print(f"Contents of task output dir ({TASK_OUTPUT_DIR}):")
-        all_task_files = []
-        for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
-            for fname in files:
-                all_task_files.append(
-                    os.path.relpath(os.path.join(root, fname), TASK_OUTPUT_DIR)
-                )
-        if all_task_files:
-            for f in all_task_files[:10]:
-                print(f"  {f}")
-            if len(all_task_files) > 10:
-                print(f"  ... and {len(all_task_files) - 10} more")
-        else:
-            print("  (empty)")
-
-        files_to_upload = []
-        for root, _dirs, files in os.walk(TASK_OUTPUT_DIR):
-            for fname in files:
-                from pathlib import Path as _Path
-
-                if any(
-                    s.lower() in _TASK_OUTPUT_EXTENSIONS for s in _Path(fname).suffixes
-                ):
-                    files_to_upload.append(os.path.join(root, fname))
-
-        if not files_to_upload:
-            print("No task output files found to sync to GCS")
-            return
-
-        print(f"Syncing {len(files_to_upload)} task output file(s) to {gcs_dest} ...")
-        fs = gcsfs.GCSFileSystem()
-        for i, local_file in enumerate(files_to_upload):
-            rel = os.path.relpath(local_file, TASK_OUTPUT_DIR)
-            gcs_file = f"{gcs_dest.rstrip('/')}/{rel}"
-            fs.put(local_file, gcs_file)
-            if i < 10:
-                print(f" Uploaded {rel} -> {gcs_file}")
-            if i == 10:
-                print(f" ... and {len(files_to_upload) - 10} more")
-
-        print("Task output sync complete")
-    except Exception as e:
-        print(f"Warning: Could not sync task outputs to GCS: {e}")
 
 
 def finalize_gcs_output_sync():
@@ -304,12 +239,8 @@ def finalize_gcs_output_sync():
 # Set up GCS output handling before training
 updated_config = setup_gcs_output_handling(config)  # noqa: F821
 
-# GCS destination for bare-filename task outputs — same bucket that is FUSE-mounted.
-# MOUNTED_GCS_PATH is set by the batch script from the config's default_root_dir.
-task_output_gcs_dest = os.environ.get("MOUNTED_GCS_PATH", "")  # noqa: F821
-
 # Change CWD to the staging directory so that relative output paths (e.g.
-# output_path: hvg_seurat_v3.csv) land in a known location for post-training upload.
+# output_path: results.csv) land in a known location for the post-run gsutil upload.
 setup_task_output_dir()
 
 # Check if we should capture logs to files (for GCS sync)
@@ -332,5 +263,5 @@ try:
 finally:
     # Sync /gcs/-style path outputs (legacy mechanism)
     finalize_gcs_output_sync()
-    # Sweep any data files left in the staging dir by relative-path outputs
-    sync_task_outputs_to_gcs(task_output_gcs_dest)
+    # Task outputs in TASK_OUTPUT_DIR are uploaded by the post-container host-VM
+    # runnable using `gsutil -m cp -r` (bulk, parallel).  Nothing to do here.

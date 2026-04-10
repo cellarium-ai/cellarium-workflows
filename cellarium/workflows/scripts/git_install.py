@@ -12,6 +12,6 @@ import os
 
 # faster
 if git_sha != "":  # noqa: F821
-    cmd = f"pip install -U -q https://github.com/cellarium-ai/cellarium-ml/archive/{git_sha}.tar.gz"  # noqa: F821
+    cmd = f"pip install -q https://github.com/cellarium-ai/cellarium-ml/archive/{git_sha}.tar.gz"  # noqa: F821
     print(cmd)
     os.system(cmd)
