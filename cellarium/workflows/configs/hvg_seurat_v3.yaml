@@ -1,0 +1,41 @@
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    init_args:
+      broadcast_buffers: false
+  max_epochs: 2
+  default_root_dir: ./outputs
+model:
+  model:
+    class_path: cellarium.ml.models.HVGSeuratV3
+    init_args:
+      n_top_genes: 8000
+      use_batch_key: true
+      flavor: seurat_v3
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: __DATASET_GLOB__
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+      cache_size_strictly_enforced: true
+      indices_strict: true
+      obs_columns_to_validate:
+        - assay_suspension_type
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var_names
+    batch_index_n:
+      attr: obs
+      key: assay_suspension_type
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
+  batch_size: 5000
+  num_workers: 8
+  prefetch_factor: 4
+ckpt_path: null

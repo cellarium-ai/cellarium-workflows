@@ -1,0 +1,44 @@
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  # Force all lightning outputs to a clean local folder for Nextflow to harvest
+  default_root_dir: ./outputs
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: ./outputs/checkpoints/
+        filename: "onepass_mean_var_std"
+        save_last: true
+model:
+  transforms:
+    - cellarium.ml.transforms.NormalizeTotal
+    - cellarium.ml.transforms.Log1p
+  model:
+    class_path: cellarium.ml.models.OnePassMeanVarStd
+    init_args:
+      algorithm: shifted_data
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: __DATASET_GLOB__
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+  batch_size: 5000
+  num_workers: 8
+  prefetch_factor: 4
+  persistent_workers: false
+ckpt_path: null
