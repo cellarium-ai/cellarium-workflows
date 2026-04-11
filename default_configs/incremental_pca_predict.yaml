@@ -52,7 +52,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_vsindex_10x/extract_files/extract_{000000..000200}.h5ad
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_vsindex_10x/extract_files/extract_{000000..000200}.h5ad
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2
