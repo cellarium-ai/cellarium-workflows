@@ -19,20 +19,19 @@ model:
     - cellarium.ml.transforms.Log1p
     - class_path: cellarium.ml.transforms.ZScore
       init_args:
-        mean_g:
-          !CheckpointLoader
-          file_path: __ONEPASS_CKPT__
-          attr: model.mean_g
-          convert_fn: torch.Tensor.cpu
-        std_g:
-          !CheckpointLoader
-          file_path: __ONEPASS_CKPT__
-          attr: model.std_g
-          convert_fn: torch.Tensor.cpu
-        var_names_g:
-          !CheckpointLoader
-          file_path: __ONEPASS_CKPT__
-          attr: model.var_names_g
+        !FileMultiLoader
+        file_path: __ONEPASS_CKPT__
+        loader_fn: pandas.read_csv
+        fields:
+          mean_g:
+            attr: mean_g.values
+            convert_fn: torch.FloatTensor
+          std_g:
+            attr: std_g.values
+            convert_fn: torch.FloatTensor
+          var_names_g:
+            attr: var_names_g
+            convert_fn: pandas.Series.to_numpy
     - class_path: cellarium.ml.transforms.Filter
       init_args:
         filter_list:

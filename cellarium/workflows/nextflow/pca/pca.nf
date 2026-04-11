@@ -3,9 +3,9 @@
 params.h5ad_bucket = 'gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files'
 params.output_bucket = 'gs://cellarium-dev-central/workflows/tmp'
 
-params.config_onepass = 'workflows/configs/base_onepass.yaml'
-params.config_hvg = 'workflows/configs/base_hvg.yaml'
-params.config_pca = 'workflows/configs/base_pca.yaml'
+params.config_onepass = "${projectDir}/../configs/onepass_mean_var_std.yaml"
+params.config_hvg     = "${projectDir}/../configs/hvg_seurat_v3.yaml"
+params.config_pca     = "${projectDir}/../configs/incremental_pca.yaml"
 
 params.container = 'us-central1-docker.pkg.dev/broad-dsde-methods/cellarium-ai/cellarium-ml:0.0.8'
 
