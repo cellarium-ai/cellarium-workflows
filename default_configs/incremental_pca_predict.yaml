@@ -11,7 +11,7 @@ trainer:
       output_dir: .
   max_epochs: 1
   logger: null
-  default_root_dir: gs://cellarium-dev-central/workflows/20260409_cas_pca_predict_vsindex
+  default_root_dir: gs://cellarium-dev-central/workflows/20260410_cas_pca_predict_vsindex
 model:
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
@@ -36,9 +36,11 @@ model:
       init_args:
         filter_list:
           !FileLoader
-          file_path: gs://cellarium-dev-central/workflows/20260403_cas_hvg_seurat_v3_8k_batch_suspension/hvg_seurat_v3_output__hvg_only.csv
+          # file_path: gs://cellarium-dev-central/workflows/20260403_cas_hvg_seurat_v3_8k_batch_suspension/hvg_seurat_v3_output__hvg_only.csv
+          file_path: gs://cellarium-file-system/curriculum/human_10x_ebd_dfr_gt_3_extract/models/shared_meta/mean-var-std-highly-variable-genes-log1p-default-cutoffs.csv
           loader_fn: pandas.read_csv
-          attr: "feature_id"
+          # attr: "feature_id"
+          attr: "original_feature_id"
           convert_fn: pandas.Series.to_list
         ordering: false
   model:
@@ -50,7 +52,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000200}.h5ad
+      filenames: cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_vsindex_10x/extract_files/extract_{000000..000200}.h5ad
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2
@@ -70,4 +72,4 @@ data:
   prefetch_factor: 4
   persistent_workers: false
 return_predictions: false
-ckpt_path: gs://cellarium-dev-central/workflows/20260403_cas_pca/lightning_logs/version_0/checkpoints/epoch=0-step=17681.ckpt
+ckpt_path: gs://cellarium-dev-central/workflows/20260410_cas_pca_oldgenelist/lightning_logs/version_0/checkpoints/epoch=0-step=8841.ckpt
