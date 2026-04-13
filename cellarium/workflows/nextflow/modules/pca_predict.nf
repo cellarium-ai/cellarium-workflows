@@ -16,13 +16,8 @@ process INCREMENTAL_PCA_PREDICT {
     """
     mkdir -p outputs/predictions
 
-    DATASET_GLOB=\$(${params.python3_bin} -c "import os; d='./${local_dataset}'; stems=sorted(os.path.splitext(f)[0] for f in os.listdir(d) if f.endswith('.h5ad')); print(d + ('/{' + ','.join(stems) + '}.h5ad' if len(stems) != 1 else '/' + stems[0] + '.h5ad'))")
-    read SHARD_SIZE LAST_SHARD_SIZE <<< \$(infer_shards.py ./${local_dataset})
-
     ${params.python3_bin} \$(which render_config.py) ${base_yaml} \
-        "dataset_glob=\${DATASET_GLOB}" \
-        "shard_size=\${SHARD_SIZE}" \
-        "last_shard_size=\${LAST_SHARD_SIZE}" \
+        "dataset_dir=./${local_dataset}" \
         "num_workers=${params.num_workers}" \
         "prefetch_factor=${params.prefetch_factor}" \
         "accelerator=${params.accelerator}" \

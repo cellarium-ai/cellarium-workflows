@@ -11,6 +11,12 @@ Values are automatically coerced:
     "" (empty)        -> ""    (also falsy; same effect as None for {% if %} checks)
     anything else     -> str
 
+Special key:
+    dataset_dir=<path>  Scans the directory for *.h5ad files (lexicographic order),
+                        reads n_obs from each via h5py, and injects two context vars:
+                          filenames  - list of absolute file path strings
+                          limits     - cumulative sum of n_obs across files
+
 Nextflow places this script on $PATH for every task when it lives in nextflow/bin/.
 """
 import argparse
@@ -30,6 +36,31 @@ def coerce(value: str):
         return int(value)
     except ValueError:
         return value
+
+
+def n_obs(path: Path) -> int:
+    import h5py
+    with h5py.File(path, "r") as f:
+        obs = f["obs"]
+        index_key = obs.attrs.get("_index", obs.attrs.get("index", None))
+        if index_key is not None:
+            return f["obs"][index_key].shape[0]
+        return obs.shape[0]
+
+
+def dataset_dir_to_filenames_and_limits(dataset_dir: str):
+    files = sorted(Path(dataset_dir).glob("*.h5ad"))
+    if not files:
+        print(f"Error: no .h5ad files found in {dataset_dir}", file=sys.stderr)
+        sys.exit(1)
+    counts = [n_obs(f) for f in files]
+    filenames = [str(f) for f in files]
+    limits = []
+    cumsum = 0
+    for c in counts:
+        cumsum += c
+        limits.append(cumsum)
+    return filenames, limits
 
 
 def main():
@@ -63,6 +94,10 @@ def main():
         key, _, value = item.partition("=")
         if key:
             context[key] = coerce(value)
+
+    if "dataset_dir" in context:
+        dataset_dir = context.pop("dataset_dir")
+        context["filenames"], context["limits"] = dataset_dir_to_filenames_and_limits(dataset_dir)
 
     rendered = template.render(**context)
     Path(args.output).write_text(rendered)

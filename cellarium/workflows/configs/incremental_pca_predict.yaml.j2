@@ -49,9 +49,14 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: {{ dataset_glob }}
-      shard_size: {{ shard_size }}
-      last_shard_size: {{ last_shard_size if last_shard_size is not none else 'null' }}
+      filenames:
+{% for f in filenames %}
+        - {{ f }}
+{% endfor %}
+      limits:
+{% for l in limits %}
+        - {{ l }}
+{% endfor %}
       max_cache_size: 2
       obs_columns_to_validate: []
   batch_keys:
@@ -67,7 +72,7 @@ data:
 {% else %}
       attr: var_names
 {% endif %}
-  batch_size: {{ [batch_size, shard_size] | min }}
+  batch_size: {{ batch_size }}
   num_workers: {{ num_workers }}
   prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
   persistent_workers: false
