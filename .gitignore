@@ -3,6 +3,10 @@ local_outputs/
 work/
 *.log*
 .nextflow*
+*.html
+*.h5ad
+*.csv
+*.ckpt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

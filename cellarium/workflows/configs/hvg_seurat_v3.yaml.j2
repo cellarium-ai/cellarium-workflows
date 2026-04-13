@@ -35,7 +35,12 @@ data:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
     var_names_g:
+{% if var_names_key %}
+      attr: var
+      key: {{ var_names_key }}
+{% else %}
       attr: var_names
+{% endif %}
 {% if batch_index_n %}
     batch_index_n:
       attr: obs

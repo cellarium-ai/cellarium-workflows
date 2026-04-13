@@ -61,22 +61,18 @@ All parameters can be overridden on the command line with `--param value`.
 ```bash
 cd cellarium/workflows/nextflow
 
-# Basic run — uses all defaults
-nextflow run pca_workflow.nf -profile gcp
-
 # Override dataset and output locations
-nextflow run pca_workflow.nf -profile gcp \
+nextflow run pca_workflow.nf \
+    -profile gcp \
+    --run_label my_pca_workflow_name \
     --dataset_dir 'gs://my-bucket/data/extract_files' \
     --outdir      'gs://my-bucket/outputs/pca_run_001'
-
-# Run without batch correction (disables batch_index_n)
-nextflow run pca_workflow.nf -profile gcp --batch_index_n ''
 
 # Use spot VMs for lower cost (~70% savings; evictions auto-retried)
 nextflow run pca_workflow.nf -profile gcp --spot true
 
-# Use a larger disk for a bigger dataset
-nextflow run pca_workflow.nf -profile gcp --disk_size '1500 GB'
+# Specify 2000 hvgs and 20 PCs
+nextflow run pca_workflow.nf -profile gcp --n_top_genes 2000 --n_components 20
 
 # Resume a failed or interrupted run from where it left off
 nextflow run pca_workflow.nf -profile gcp -resume
@@ -131,20 +127,19 @@ Runs just the highly variable gene selection step in isolation. Useful for tunin
 cd cellarium/workflows/nextflow
 
 # GCP
-nextflow run hvg_workflow.nf -profile gcp \
+nextflow run hvg_workflow.nf \
+    -profile gcp \
     --dataset_dir 'gs://my-bucket/data/extract_files' \
     --outdir      'gs://my-bucket/outputs/hvg_run_001'
 
 # Local
-nextflow run hvg_workflow.nf -profile local \
+nextflow run hvg_workflow.nf \
+    -profile local \
     --dataset_dir /path/to/local/h5ad/dir \
     --outdir      ./local_outputs
 
-# Disable batch correction
-nextflow run hvg_workflow.nf -profile gcp --batch_index_n ''
-
-# Try a different number of HVGs
-nextflow run hvg_workflow.nf -profile gcp --n_top_genes 5000
+# Choose the number of HVGs
+nextflow run hvg_workflow.nf -profile gcp --n_top_genes 2000
 ```
 
 ---

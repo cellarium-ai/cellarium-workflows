@@ -6,10 +6,9 @@ params.config_hvg    = "${projectDir}/../configs/hvg_seurat_v3.yaml.j2"
 params.n_top_genes   = 2000
 params.flavor        = 'seurat_v3'
 params.batch_index_n = 'null'
-params.shard_size      = 10000
-params.last_shard_size = 'null'
 params.num_workers     = 8
 params.prefetch_factor = 4
+params.var_names_key   = 'null'
 params.accelerator     = 'auto'
 params.batch_size      = 5000
 

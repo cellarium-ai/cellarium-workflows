@@ -10,8 +10,6 @@ params.n_components       = 64
 params.n_top_genes        = 8000
 params.flavor             = 'seurat_v3'
 params.batch_index_n      = 'null'
-params.shard_size         = 10000
-params.last_shard_size    = 'null'
 params.num_workers        = 8
 params.prefetch_factor    = 4
 params.var_names_key      = 'null'
@@ -20,8 +18,7 @@ params.batch_size         = 5000
 
 include { ONEPASS_MEAN_VAR        } from './modules/onepass.nf'
 include { HIGHLY_VARIABLE_GENES   } from './modules/hvg.nf'
-include { INCREMENTAL_PCA         } from './modules/pca.nf'
-include { INCREMENTAL_PCA_PREDICT } from './modules/pca_predict.nf'
+include { INCREMENTAL_PCA_PLUS_PREDICTION } from './modules/pca_plus_predict.nf'
 
 workflow {
     dataset_ch         = Channel.value(file(params.dataset_dir))
@@ -34,20 +31,12 @@ workflow {
     onepass_out = ONEPASS_MEAN_VAR(dataset_ch, cfg_onepass_ch)
     hvg_out     = HIGHLY_VARIABLE_GENES(dataset_ch, cfg_hvg_ch)
 
-    // INCREMENTAL_PCA waits for both
-    pca_out = INCREMENTAL_PCA(
+    // INCREMENTAL_PCA_PLUS_PREDICTION waits for both, runs prediction on same machine
+    pca_out = INCREMENTAL_PCA_PLUS_PREDICTION(
         dataset_ch,
         onepass_out.onepass_csv,
         hvg_out.hvg_csv,
-        cfg_pca_ch
-    )
-
-    // INCREMENTAL_PCA_PREDICT waits for the PCA model
-    INCREMENTAL_PCA_PREDICT(
-        dataset_ch,
-        pca_out.final_model,
-        onepass_out.onepass_csv,
-        hvg_out.hvg_csv,
+        cfg_pca_ch,
         cfg_pca_predict_ch
     )
 }
