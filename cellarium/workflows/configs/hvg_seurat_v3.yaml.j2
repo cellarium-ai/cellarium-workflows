@@ -1,5 +1,6 @@
 seed_everything: true
 trainer:
+  accelerator: {{ accelerator }}
   strategy:
     class_path: lightning.pytorch.strategies.DDPStrategy
     init_args:
@@ -13,15 +14,15 @@ model:
       n_top_genes: {{ n_top_genes }}
       use_batch_key: {{ 'true' if batch_index_n else 'false' }}
       flavor: {{ flavor }}
+      output_path: ./outputs/hvg_genes.csv
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
       filenames: {{ dataset_glob }}
-      shard_size: 10_000
-      last_shard_size: null
+      shard_size: {{ shard_size }}
+      last_shard_size: {{ last_shard_size if last_shard_size is not none else 'null' }}
       max_cache_size: 2
-      cache_size_strictly_enforced: true
       indices_strict: true
 {% if batch_index_n %}
       obs_columns_to_validate:
@@ -41,7 +42,9 @@ data:
       key: {{ batch_index_n }}
       convert_fn: cellarium.ml.utilities.data.categories_to_codes
 {% endif %}
-  batch_size: 5000
-  num_workers: 8
-  prefetch_factor: 4
+  batch_size: {{ [batch_size, shard_size] | min }}
+  iteration_strategy: cache_efficient
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
+  shuffle: true
 ckpt_path: null

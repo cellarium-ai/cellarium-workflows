@@ -1,5 +1,6 @@
 seed_everything: true
 trainer:
+  accelerator: {{ accelerator }}
   strategy:
     class_path: lightning.pytorch.strategies.DDPStrategy
     dict_kwargs:
@@ -8,12 +9,6 @@ trainer:
   logger: null
   # Force all lightning outputs to a clean local folder for Nextflow to harvest
   default_root_dir: ./outputs
-  callbacks:
-    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
-      init_args:
-        dirpath: ./outputs/checkpoints/
-        filename: "onepass_mean_var_std"
-        save_last: true
 model:
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
@@ -22,23 +17,29 @@ model:
     class_path: cellarium.ml.models.OnePassMeanVarStd
     init_args:
       algorithm: shifted_data
+      output_path: ./outputs/onepass_mean_var_std.csv
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
       filenames: {{ dataset_glob }}
-      shard_size: 10_000
-      last_shard_size: null
+      shard_size: {{ shard_size }}
+      last_shard_size: {{ last_shard_size if last_shard_size is not none else 'null' }}
       max_cache_size: 2
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
     var_names_g:
+{% if var_names_key %}
       attr: var
-      key: feature_id
-  batch_size: 5000
-  num_workers: 8
-  prefetch_factor: 4
-  persistent_workers: false
+      key: {{ var_names_key }}
+{% else %}
+      attr: var_names
+{% endif %}
+  batch_size: {{ [batch_size, shard_size] | min }}
+  iteration_strategy: cache_efficient
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
+  shuffle: true
 ckpt_path: null

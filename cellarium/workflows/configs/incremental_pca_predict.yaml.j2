@@ -1,5 +1,6 @@
 seed_everything: true
 trainer:
+  accelerator: {{ accelerator }}
   strategy:
     class_path: lightning.pytorch.strategies.DDPStrategy
     dict_kwargs:
@@ -7,6 +8,10 @@ trainer:
   max_epochs: 1
   logger: null
   default_root_dir: ./outputs
+  callbacks:
+    - class_path: cellarium.ml.callbacks.PredictionWriter
+      init_args:
+        output_dir: ./outputs/predictions
 model:
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
@@ -14,7 +19,7 @@ model:
     - class_path: cellarium.ml.transforms.ZScore
       init_args:
         !FileMultiLoader
-        file_path: {{ onepass_ckpt }}
+        file_path: {{ onepass_csv }}
         loader_fn: pandas.read_csv
         fields:
           mean_g:
@@ -32,7 +37,7 @@ model:
           !FileLoader
           file_path: {{ hvg_csv }}
           loader_fn: pandas.read_csv
-          attr: "original_feature_id"
+          attr: "gene"
           convert_fn: pandas.Series.to_list
         ordering: false
   model:
@@ -45,20 +50,26 @@ data:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
       filenames: {{ dataset_glob }}
-      shard_size: 10_000
-      last_shard_size: null
+      shard_size: {{ shard_size }}
+      last_shard_size: {{ last_shard_size if last_shard_size is not none else 'null' }}
       max_cache_size: 2
       obs_columns_to_validate: []
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
+    obs_names_n:
+      attr: obs_names
     var_names_g:
+{% if var_names_key %}
       attr: var
-      key: feature_id
-  batch_size: 5000
-  num_workers: 2
-  prefetch_factor: 4
+      key: {{ var_names_key }}
+{% else %}
+      attr: var_names
+{% endif %}
+  batch_size: {{ [batch_size, shard_size] | min }}
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
   persistent_workers: false
 return_predictions: false
 ckpt_path: {{ pca_model }}

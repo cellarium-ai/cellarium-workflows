@@ -9,39 +9,57 @@ Nextflow pipelines for running [cellarium-ml](https://github.com/cellarium-ai/ce
 Here is an example. Run PCA on an arbitrarily large dataset (ideally created by Cellarium Nexus, but not necessarily) using google cloud hardware:
 
 ```bash
-nextflow run pca.nf \
+nextflow run cellarium/workflows/nextflow/pca_workflow.nf \
     --h5ad_bucket  'gs://my-bucket/data/extract_files' \
     --output_bucket 'gs://my-bucket/outputs/pca'
 ```
 
 Includes highly-variable gene selection and gene z-scoring. Takes maybe 9 hours on 100M cells.  The output bucket will contain a trained PCA model checkpoint as well as the per-cell PCs in sharded CSV files.
 
-## Pipelines
+## Workflows
 
-| Pipeline | File | Description |
-|---|---|---|
-| [PCA](cellarium/workflows/nextflow/README.md) | `cellarium/workflows/nextflow/pca.nf` | OnePass mean/var → HVG selection → Incremental PCA |
+Descriptions of current workflows can be found [here](cellarium/workflows/nextflow/README.md)
 
 ---
 
 ## Installing Nextflow
 
-Nextflow requires Java 17 or later. The recommended install method is via [SDKMAN](https://sdkman.io/) or the standalone installer:
+Nextflow requires Java 17 or later.
+
+### Conda install
+
+You can [install nextflow in a conda environment](https://docs.seqera.io/nextflow/install#conda).
 
 ```bash
-# Option A — standalone installer (macOS/Linux)
-curl -s https://get.nextflow.io | bash
-sudo mv nextflow /usr/local/bin/
-
-# Option B — SDKMAN (manages Java too)
-sdk install java 21-tem
-curl -s https://get.nextflow.io | bash
+conda create -n nextflow bioconda::nextflow
+conda activate nextflow
+nextflow info
 ```
 
-Verify:
+### System-wide install
+
+The [recommended install method](https://docs.seqera.io/nextflow/install) is via the standalone installer.
+
+If you do not yet have java 17 - 26 (`java -version`), then this is recommended:
 
 ```bash
-nextflow -version
+curl -s https://get.sdkman.io | bash
+sdk install java 17.0.10-tem
+```
+
+Confirm the java installation using `java -version` and then do
+
+```bash
+curl -s https://get.nextflow.io | bash
+chmod +x nextflow
+mkdir -p $HOME/.local/bin/
+mv nextflow $HOME/.local/bin/
+```
+
+In either case, you can verify your installation with this command:
+
+```bash
+nextflow info
 ```
 
 You need at least **Nextflow 23.10** for the Google Batch executor used here.

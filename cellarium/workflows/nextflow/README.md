@@ -43,7 +43,6 @@ All parameters can be overridden on the command line with `--param value`.
 | `work_bucket` | `gs://cellarium-dev-central/workflows/tmp` | GCS work dir for Nextflow staging |
 | `spot` | `false` | Use preemptible VMs (`true` saves ~70%; evictions auto-retried) |
 | `disk_size` | `750 GB` | pd-ssd disk per task VM |
-| `conda_env` | `cellarium` | Conda env name for `-profile local` runs |
 | `container` | `cellarium-ml:0.0.8` | Container image for `-profile gcp` runs |
 
 **Pipeline** (`pca_workflow.nf`):
@@ -97,25 +96,16 @@ Batch jobs are also visible in the [Google Cloud Batch console](https://console.
 
 ## Running locally
 
-Runs each process in a local conda environment (no Docker needed). The named conda environment must already exist.
+Activate your cellarium conda environment first. Processes launched by Nextflow inherit the environment nextflow was launched from, so `render_config.py` and `cellarium-ml` are found automatically.
 
 ```bash
+conda activate cellarium
 cd cellarium/workflows/nextflow
 
 nextflow run pca_workflow.nf -profile local \
     --dataset_dir /path/to/local/h5ad/dir \
     --outdir      ./local_outputs
 ```
-
-Override the conda environment name if yours differs from the default:
-
-```bash
-nextflow run pca_workflow.nf -profile local --conda_env my-cellarium-env \
-    --dataset_dir /path/to/local/h5ad/dir \
-    --outdir      ./local_outputs
-```
-
-> **Note**: Local runs with GPU processes require an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) — or remove `accelerator` directives from `nextflow.config` for CPU-only testing.
 
 ---
 

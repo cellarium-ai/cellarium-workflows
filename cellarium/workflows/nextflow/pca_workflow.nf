@@ -9,7 +9,14 @@ params.config_pca_predict = "${projectDir}/../configs/incremental_pca_predict.ya
 params.n_components       = 64
 params.n_top_genes        = 8000
 params.flavor             = 'seurat_v3'
-params.batch_index_n      = 'assay_suspension_type'
+params.batch_index_n      = 'null'
+params.shard_size         = 10000
+params.last_shard_size    = 'null'
+params.num_workers        = 8
+params.prefetch_factor    = 4
+params.var_names_key      = 'null'
+params.accelerator        = 'auto'
+params.batch_size         = 5000
 
 include { ONEPASS_MEAN_VAR        } from './modules/onepass.nf'
 include { HIGHLY_VARIABLE_GENES   } from './modules/hvg.nf'
@@ -30,7 +37,7 @@ workflow {
     // INCREMENTAL_PCA waits for both
     pca_out = INCREMENTAL_PCA(
         dataset_ch,
-        onepass_out.checkpoint,
+        onepass_out.onepass_csv,
         hvg_out.hvg_csv,
         cfg_pca_ch
     )
@@ -39,7 +46,7 @@ workflow {
     INCREMENTAL_PCA_PREDICT(
         dataset_ch,
         pca_out.final_model,
-        onepass_out.checkpoint,
+        onepass_out.onepass_csv,
         hvg_out.hvg_csv,
         cfg_pca_predict_ch
     )
