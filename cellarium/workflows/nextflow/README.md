@@ -1,10 +1,16 @@
 # The workflows
 
-% link to the other headings like a table of contents
+- [PCA workflow](#pca-workflow-pca_workflownf) — full PCA training + prediction pipeline
+- [HVG workflow](#hvg-workflow-hvg_workflownf) — standalone highly variable gene selection
+- [Onepass workflow](#onepass-workflow-onepass_workflownf) — standalone mean/variance/std pass
+
+`nextflow.config` (in this directory) is auto-detected by all workflows. Run with `-profile gcp` for Google Cloud Batch or `-profile local` for local execution via a conda environment.
+
+---
 
 # PCA workflow (`pca_workflow.nf`)
 
-Runs a three-step [cellarium-ml](https://github.com/cellarium-ai/cellarium-ml) PCA workflow on Google Cloud Batch.
+Runs a four-step [cellarium-ml](https://github.com/cellarium-ai/cellarium-ml) PCA training and prediction workflow on Google Cloud Batch.
 
 See the [repo README](../../../README.md) for Nextflow installation, the nf-google plugin, and GCP prerequisites.
 
@@ -12,59 +18,69 @@ See the [repo README](../../../README.md) for Nextflow installation, the nf-goog
 
 ```
 ONEPASS_MEAN_VAR ──┐
-                   ├──► INCREMENTAL_PCA
+                   ├──► INCREMENTAL_PCA ──► INCREMENTAL_PCA_PREDICT
 HIGHLY_VARIABLE ───┘
      GENES
 ```
 
-1. **`ONEPASS_MEAN_VAR`** — single pass over all cells to compute per-gene mean, variance, and std. Output: `onepass_mean_var_std.ckpt`.
-2. **`HIGHLY_VARIABLE_GENES`** — selects 8,000 HVGs (Seurat v3 flavor) per batch key. Output: `hvg.csv`. Runs in parallel with step 1.
-3. **`INCREMENTAL_PCA`** — fits a 64-component PCA using ZScore normalization (from step 1) and HVG filtering (from step 2). Output: `pca_final.ckpt`.
+1. **`ONEPASS_MEAN_VAR`** — single pass over all cells to compute per-gene mean, variance, and std. Output: `onepass_mean_var_std.ckpt`. Runs in parallel with step 2.
+2. **`HIGHLY_VARIABLE_GENES`** — selects HVGs (Seurat v3 flavor) per batch key. Output: `hvg.csv`. Runs in parallel with step 1.
+3. **`INCREMENTAL_PCA`** — fits an incremental PCA model using ZScore normalization (from step 1) and HVG filtering (from step 2). Output: `pca_final.ckpt`.
+4. **`INCREMENTAL_PCA_PREDICT`** — projects all cells through the trained PCA model. Output: `batch*.csv.gz`.
 
-Config files for each step live in `cellarium/workflows/configs/` and are staged to each task VM automatically by Nextflow.
+Config templates for each step live in `cellarium/workflows/configs/` as `.yaml.j2` files and are rendered at runtime with `bin/render_config.py`.
 
----
+## Parameters
 
-## Configuration
+All parameters can be overridden on the command line with `--param value`.
 
-`nextflow.config` lives next to `pca.nf` and is picked up automatically. Key parameters you will want to set — either by editing the file or overriding on the command line with `--param value`:
+**Infrastructure** (`nextflow.config`):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `google_project` | `broad-dsde-methods` | GCP project ID |
+| `google_project` | `dsp-cellarium` | GCP project ID |
 | `google_region` | `us-central1` | Region for Batch jobs and GCS buckets |
-| `work_bucket` | `gs://cellarium-dev-central/workflows/tmp` | GCS path for Nextflow work dir |
-| `spot` | `false` | Use preemptible VMs (`true` saves ~70%; retries on eviction) |
-| `disk_size` | `750 GB` | pd-ssd disk per task (increase if staging > ~500 GB) |
+| `work_bucket` | `gs://cellarium-dev-central/workflows/tmp` | GCS work dir for Nextflow staging |
+| `spot` | `false` | Use preemptible VMs (`true` saves ~70%; evictions auto-retried) |
+| `disk_size` | `750 GB` | pd-ssd disk per task VM |
+| `conda_env` | `cellarium` | Conda env name for `-profile local` runs |
+| `container` | `cellarium-ml:0.0.8` | Container image for `-profile gcp` runs |
 
-Pipeline-specific parameters (in `pca.nf`):
+**Pipeline** (`pca_workflow.nf`):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `h5ad_bucket` | *(see pca.nf)* | GCS directory containing input `.h5ad` files |
-| `output_bucket` | *(see pca.nf)* | GCS path where final outputs are published |
-| `container` | `cellarium-ml:0.0.8` | Container image (Artifact Registry) |
-
----
+| `dataset_dir` | *(see pca_workflow.nf)* | GCS directory (or local path) of input `.h5ad` files |
+| `outdir` | *(see pca_workflow.nf)* | GCS path (or local dir) where outputs are published |
+| `n_components` | `64` | Number of PCA components |
+| `n_top_genes` | `8000` | Number of highly variable genes to select |
+| `flavor` | `seurat_v3` | HVG selection method |
+| `batch_index_n` | `assay_suspension_type` | Obs column for batch-aware HVG selection; pass `''` to disable |
 
 ## Running on Google Cloud Batch
 
 ```bash
 cd cellarium/workflows/nextflow
 
-# Override input/output buckets
-nextflow run pca.nf \
-    --h5ad_bucket  'gs://my-bucket/data/extract_files' \
-    --output_bucket 'gs://my-bucket/outputs/pca'
+# Basic run — uses all defaults
+nextflow run pca_workflow.nf -profile gcp
+
+# Override dataset and output locations
+nextflow run pca_workflow.nf -profile gcp \
+    --dataset_dir 'gs://my-bucket/data/extract_files' \
+    --outdir      'gs://my-bucket/outputs/pca_run_001'
+
+# Run without batch correction (disables batch_index_n)
+nextflow run pca_workflow.nf -profile gcp --batch_index_n ''
 
 # Use spot VMs for lower cost (~70% savings; evictions auto-retried)
-nextflow run pca.nf --spot true
+nextflow run pca_workflow.nf -profile gcp --spot true
 
-# Different disk size (e.g. for a larger dataset)
-nextflow run pca.nf --disk_size '1500 GB'
+# Use a larger disk for a bigger dataset
+nextflow run pca_workflow.nf -profile gcp --disk_size '1500 GB'
 
-# Resume a failed/interrupted run from where it left off
-nextflow run pca.nf -resume
+# Resume a failed or interrupted run from where it left off
+nextflow run pca_workflow.nf -profile gcp -resume
 ```
 
 Nextflow prints a run name (e.g. `festive_curie`). Monitor progress:
@@ -79,23 +95,96 @@ watch -n 30 nextflow log festive_curie -f 'process,status,exit,duration'
 
 Batch jobs are also visible in the [Google Cloud Batch console](https://console.cloud.google.com/batch/jobs).
 
----
-
 ## Running locally
 
-For local runs (e.g. testing on a small subset), override the executor to bypass Google Batch entirely. Nextflow will run each process as a local subprocess using Docker.
-
-Ensure Docker is running, then:
+Runs each process in a local conda environment (no Docker needed). The named conda environment must already exist.
 
 ```bash
 cd cellarium/workflows/nextflow
 
-nextflow run pca.nf \
-    -process.executor='local' \
-    --h5ad_bucket /path/to/local/h5ad/dir \
-    --output_bucket ./local_outputs
+nextflow run pca_workflow.nf -profile local \
+    --dataset_dir /path/to/local/h5ad/dir \
+    --outdir      ./local_outputs
 ```
 
-# HVG workflow
+Override the conda environment name if yours differs from the default:
 
+```bash
+nextflow run pca_workflow.nf -profile local --conda_env my-cellarium-env \
+    --dataset_dir /path/to/local/h5ad/dir \
+    --outdir      ./local_outputs
+```
+
+> **Note**: Local runs with GPU processes require an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) — or remove `accelerator` directives from `nextflow.config` for CPU-only testing.
+
+---
+
+# HVG workflow (`hvg_workflow.nf`)
+
+Runs just the highly variable gene selection step in isolation. Useful for tuning HVG parameters independently before a full PCA run.
+
+**`HIGHLY_VARIABLE_GENES`** — fits `HVGSeuratV3` over the dataset, computing per-gene variability scores per batch key. Output: a CSV of selected gene IDs published to `outdir/hvg_seurat_v3/`.
+
+## Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `dataset_dir` | *(see hvg_workflow.nf)* | Input `.h5ad` directory |
+| `outdir` | *(see hvg_workflow.nf)* | Output directory |
+| `n_top_genes` | `8000` | Number of HVGs to select |
+| `flavor` | `seurat_v3` | HVG selection method |
+| `batch_index_n` | `assay_suspension_type` | Obs column for batch-aware selection; pass `''` to disable |
+
+## Running
+
+```bash
+cd cellarium/workflows/nextflow
+
+# GCP
+nextflow run hvg_workflow.nf -profile gcp \
+    --dataset_dir 'gs://my-bucket/data/extract_files' \
+    --outdir      'gs://my-bucket/outputs/hvg_run_001'
+
+# Local
+nextflow run hvg_workflow.nf -profile local \
+    --dataset_dir /path/to/local/h5ad/dir \
+    --outdir      ./local_outputs
+
+# Disable batch correction
+nextflow run hvg_workflow.nf -profile gcp --batch_index_n ''
+
+# Try a different number of HVGs
+nextflow run hvg_workflow.nf -profile gcp --n_top_genes 5000
+```
+
+---
+
+# Onepass workflow (`onepass_workflow.nf`)
+
+Runs just the mean/variance/std pass in isolation. Produces statistics used downstream by `INCREMENTAL_PCA` for ZScore normalization.
+
+**`ONEPASS_MEAN_VAR`** — computes per-gene mean, variance, and std over all cells using `NormalizeTotal` → `Log1p` transforms. Output: `onepass_mean_var_std.ckpt` published to `outdir/onepass_mean_var_std/`.
+
+## Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `dataset_dir` | *(see onepass_workflow.nf)* | Input `.h5ad` directory |
+| `outdir` | *(see onepass_workflow.nf)* | Output directory |
+
+## Running
+
+```bash
+cd cellarium/workflows/nextflow
+
+# GCP
+nextflow run onepass_workflow.nf -profile gcp \
+    --dataset_dir 'gs://my-bucket/data/extract_files' \
+    --outdir      'gs://my-bucket/outputs/onepass_run_001'
+
+# Local
+nextflow run onepass_workflow.nf -profile local \
+    --dataset_dir /path/to/local/h5ad/dir \
+    --outdir      ./local_outputs
+```
 
