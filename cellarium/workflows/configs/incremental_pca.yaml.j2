@@ -1,0 +1,69 @@
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: ./outputs
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: ./outputs/checkpoints/
+        filename: "pca_final"
+        save_weights_only: true
+model:
+  transforms:
+    - cellarium.ml.transforms.NormalizeTotal
+    - cellarium.ml.transforms.Log1p
+    - class_path: cellarium.ml.transforms.ZScore
+      init_args:
+        !FileMultiLoader
+        file_path: {{ onepass_ckpt }}
+        loader_fn: pandas.read_csv
+        fields:
+          mean_g:
+            attr: mean_g.values
+            convert_fn: torch.FloatTensor
+          std_g:
+            attr: std_g.values
+            convert_fn: torch.FloatTensor
+          var_names_g:
+            attr: var_names_g
+            convert_fn: pandas.Series.to_numpy
+    - class_path: cellarium.ml.transforms.Filter
+      init_args:
+        filter_list:
+          !FileLoader
+          file_path: {{ hvg_csv }}
+          loader_fn: pandas.read_csv
+          attr: "original_feature_id"
+          convert_fn: pandas.Series.to_list
+        ordering: false
+  model:
+    class_path: cellarium.ml.models.IncrementalPCA
+    init_args:
+      var_names_g: null
+      n_components: {{ n_components }}
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: {{ dataset_glob }}
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+      obs_columns_to_validate: []
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+  batch_size: 5000
+  num_workers: 2 
+  prefetch_factor: 4
+  persistent_workers: false
+ckpt_path: null

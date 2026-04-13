@@ -10,31 +10,37 @@ model:
   model:
     class_path: cellarium.ml.models.HVGSeuratV3
     init_args:
-      n_top_genes: 8000
-      use_batch_key: true
-      flavor: seurat_v3
+      n_top_genes: {{ n_top_genes }}
+      use_batch_key: {{ 'true' if batch_index_n else 'false' }}
+      flavor: {{ flavor }}
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: __DATASET_GLOB__
+      filenames: {{ dataset_glob }}
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2
       cache_size_strictly_enforced: true
       indices_strict: true
+{% if batch_index_n %}
       obs_columns_to_validate:
-        - assay_suspension_type
+        - {{ batch_index_n }}
+{% else %}
+      obs_columns_to_validate: []
+{% endif %}
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
     var_names_g:
       attr: var_names
+{% if batch_index_n %}
     batch_index_n:
       attr: obs
-      key: assay_suspension_type
+      key: {{ batch_index_n }}
       convert_fn: cellarium.ml.utilities.data.categories_to_codes
+{% endif %}
   batch_size: 5000
   num_workers: 8
   prefetch_factor: 4

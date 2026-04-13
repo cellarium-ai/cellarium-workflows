@@ -26,7 +26,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames: __DATASET_GLOB__
+      filenames: {{ dataset_glob }}
       shard_size: 10_000
       last_shard_size: null
       max_cache_size: 2

@@ -1,4 +1,8 @@
-# PCA pipeline (`pca.nf`)
+# The workflows
+
+% link to the other headings like a table of contents
+
+# PCA workflow (`pca_workflow.nf`)
 
 Runs a three-step [cellarium-ml](https://github.com/cellarium-ai/cellarium-ml) PCA workflow on Google Cloud Batch.
 
@@ -91,3 +95,7 @@ nextflow run pca.nf \
     --h5ad_bucket /path/to/local/h5ad/dir \
     --output_bucket ./local_outputs
 ```
+
+# HVG workflow
+
+
