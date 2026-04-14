@@ -11,6 +11,7 @@ params.prefetch_factor = 4
 params.var_names_key   = 'null'
 params.accelerator     = 'auto'
 params.batch_size      = 5000
+params.max_cache_size  = 4
 
 include { HIGHLY_VARIABLE_GENES } from './modules/hvg.nf'
 

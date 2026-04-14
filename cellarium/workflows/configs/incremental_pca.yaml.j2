@@ -15,6 +15,16 @@ trainer:
         filename: "pca_final"
         save_weights_only: true
 model:
+  cpu_transforms:
+    - class_path: cellarium.ml.transforms.Filter
+      init_args:
+        filter_list:
+          !FileLoader
+          file_path: {{ hvg_csv }}
+          loader_fn: pandas.read_csv
+          attr: "gene"
+          convert_fn: pandas.Series.to_list
+        ordering: false
   transforms:
     - cellarium.ml.transforms.NormalizeTotal
     - cellarium.ml.transforms.Log1p
@@ -33,15 +43,6 @@ model:
           var_names_g:
             attr: var_names_g
             convert_fn: pandas.Series.to_numpy
-    - class_path: cellarium.ml.transforms.Filter
-      init_args:
-        filter_list:
-          !FileLoader
-          file_path: {{ hvg_csv }}
-          loader_fn: pandas.read_csv
-          attr: "gene"
-          convert_fn: pandas.Series.to_list
-        ordering: false
   model:
     class_path: cellarium.ml.models.IncrementalPCA
     init_args:
@@ -59,7 +60,7 @@ data:
 {% for l in limits %}
         - {{ l }}
 {% endfor %}
-      max_cache_size: 2
+      max_cache_size: {{ max_cache_size }}
       obs_columns_to_validate: []
   batch_keys:
     x_ng:

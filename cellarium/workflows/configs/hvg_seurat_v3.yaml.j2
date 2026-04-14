@@ -27,7 +27,7 @@ data:
 {% for l in limits %}
         - {{ l }}
 {% endfor %}
-      max_cache_size: 2
+      max_cache_size: {{ max_cache_size }}
       indices_strict: true
 {% if batch_index_n %}
       obs_columns_to_validate:

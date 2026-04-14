@@ -15,7 +15,7 @@ process ONEPASS_MEAN_VAR {
 
     if ${params.gcp_download}; then
         mkdir -p /tmp/dataset
-        gcloud storage cp --quiet '${dataset_dir}/*.h5ad' /tmp/dataset/
+        gsutil -m -o 'GSUtil:parallel_process_count=16' -o 'GSUtil:parallel_thread_count=4' cp '${dataset_dir}/*.h5ad' /tmp/dataset/
         _dataset_dir=/tmp/dataset
     else
         _dataset_dir='${dataset_dir}'
@@ -27,7 +27,8 @@ process ONEPASS_MEAN_VAR {
         "prefetch_factor=${params.prefetch_factor}" \
         "var_names_key=${params.var_names_key}" \
         "accelerator=${params.accelerator}" \
-        "batch_size=${params.batch_size}"
+        "batch_size=${params.batch_size}" \
+        "max_cache_size=${params.max_cache_size}"
 
     run_with_gpu_monitor.sh cellarium-ml onepass_mean_var_std fit -c run_config.yaml
     """

@@ -19,7 +19,7 @@ process INCREMENTAL_PCA_PREDICT {
 
     if ${params.gcp_download}; then
         mkdir -p /tmp/dataset
-        gcloud storage cp --quiet '${dataset_dir}/*.h5ad' /tmp/dataset/
+        gsutil -m -o 'GSUtil:parallel_process_count=16' -o 'GSUtil:parallel_thread_count=4' cp '${dataset_dir}/*.h5ad' /tmp/dataset/
         _dataset_dir=/tmp/dataset
     else
         _dataset_dir='${dataset_dir}'
@@ -35,7 +35,8 @@ process INCREMENTAL_PCA_PREDICT {
         "pca_model=./${pca_model}" \
         "onepass_csv=./${onepass_csv}" \
         "hvg_csv=./${hvg_csv}" \
-        "n_components=${params.n_components}"
+        "n_components=${params.n_components}" \
+        "max_cache_size=${params.max_cache_size}"
 
     run_with_gpu_monitor.sh cellarium-ml incremental_pca predict -c run_config.yaml
     """

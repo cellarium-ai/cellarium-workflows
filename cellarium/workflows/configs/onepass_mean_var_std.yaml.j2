@@ -30,7 +30,7 @@ data:
 {% for l in limits %}
         - {{ l }}
 {% endfor %}
-      max_cache_size: 2
+      max_cache_size: {{ max_cache_size }}
   batch_keys:
     x_ng:
       attr: X
