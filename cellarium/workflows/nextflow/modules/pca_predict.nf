@@ -11,6 +11,7 @@ process INCREMENTAL_PCA_PREDICT {
     output:
     // grab all the output files
     path 'outputs/predictions/batch*.csv.gz', emit: pcs
+    path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:
     """
@@ -36,6 +37,6 @@ process INCREMENTAL_PCA_PREDICT {
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}"
 
-    cellarium-ml incremental_pca predict -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml incremental_pca predict -c run_config.yaml
     """
 }

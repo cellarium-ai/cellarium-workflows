@@ -7,6 +7,7 @@ process HIGHLY_VARIABLE_GENES {
 
     output:
     path 'outputs/hvg_genes__top*__hvg_only.csv', emit: hvg_csv
+    path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:
     """
@@ -31,6 +32,6 @@ process HIGHLY_VARIABLE_GENES {
         "batch_index_n=${params.batch_index_n}" \
         "var_names_key=${params.var_names_key}"
 
-    cellarium-ml hvg_seurat_v3 fit -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml hvg_seurat_v3 fit -c run_config.yaml
     """
 }

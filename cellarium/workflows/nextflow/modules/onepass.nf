@@ -7,6 +7,7 @@ process ONEPASS_MEAN_VAR {
 
     output:
     path 'outputs/onepass_mean_var_std.csv', emit: onepass_csv
+    path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:
     """
@@ -28,6 +29,6 @@ process ONEPASS_MEAN_VAR {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}"
 
-    cellarium-ml onepass_mean_var_std fit -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml onepass_mean_var_std fit -c run_config.yaml
     """
 }

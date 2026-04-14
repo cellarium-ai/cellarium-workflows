@@ -10,7 +10,8 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
 
     output:
     path 'outputs/checkpoints/pca_final.ckpt', emit: final_model
-    path 'outputs/predictions/batch*.csv.gz', emit: pcs
+    path 'outputs/predictions/batch*.csv.gz',  emit: pcs
+    path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:
     """
@@ -36,7 +37,7 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}"
 
-    cellarium-ml incremental_pca fit -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml incremental_pca fit -c run_config.yaml
 
     ${params.python3_bin} \$(which render_config.py) ${base_predict_yaml} \
         "dataset_dir=\${_dataset_dir}" \
@@ -50,6 +51,6 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}"
 
-    cellarium-ml incremental_pca predict -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml incremental_pca predict -c run_config.yaml
     """
 }

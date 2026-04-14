@@ -9,6 +9,7 @@ process INCREMENTAL_PCA {
 
     output:
     path 'outputs/checkpoints/pca_final.ckpt', emit: final_model
+    path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:
     """
@@ -33,6 +34,6 @@ process INCREMENTAL_PCA {
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}"
 
-    cellarium-ml incremental_pca fit -c run_config.yaml
+    run_with_gpu_monitor.sh cellarium-ml incremental_pca fit -c run_config.yaml
     """
 }
