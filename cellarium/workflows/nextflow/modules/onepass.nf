@@ -13,13 +13,8 @@ process ONEPASS_MEAN_VAR {
     """
     mkdir -p outputs
 
-    if ${params.gcp_download}; then
-        mkdir -p /tmp/dataset
-        gcloud storage cp '${dataset_dir}/*.h5ad' /tmp/dataset/
-        _dataset_dir=/tmp/dataset
-    else
-        _dataset_dir='${dataset_dir}'
-    fi
+    maybe_pip_install.sh "${params.cellarium_ml_ref}"
+    _dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${dataset_dir}")
 
     ${params.python3_bin} \$(which render_config.py) ${base_yaml} \
         "dataset_dir=\${_dataset_dir}" \
