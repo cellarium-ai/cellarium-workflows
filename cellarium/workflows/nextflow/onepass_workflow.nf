@@ -4,10 +4,10 @@ params.dataset_dir    = 'gs://cellarium-nexus-file-system-3293a8/pipeline/data-e
 params.outdir         = 'gs://cellarium-dev-central/workflows/tmp'
 params.config_onepass = "${projectDir}/../configs/onepass_mean_var_std.yaml.j2"
 params.num_workers     = 8
-params.prefetch_factor = 2
+params.prefetch_factor = 4
 params.var_names_key   = 'null'
 params.accelerator     = 'auto'
-params.batch_size      = 20000
+params.batch_size      = 5000
 params.max_cache_size  = 4
 
 include { ONEPASS_MEAN_VAR } from './modules/onepass.nf'

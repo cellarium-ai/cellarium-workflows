@@ -20,7 +20,7 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
 
     if ${params.gcp_download}; then
         mkdir -p /tmp/dataset
-        gsutil -m -o 'GSUtil:parallel_process_count=16' -o 'GSUtil:parallel_thread_count=4' cp '${dataset_dir}/*.h5ad' /tmp/dataset/
+        gcloud storage cp '${dataset_dir}/*.h5ad' /tmp/dataset/
         _dataset_dir=/tmp/dataset
     else
         _dataset_dir='${dataset_dir}'
