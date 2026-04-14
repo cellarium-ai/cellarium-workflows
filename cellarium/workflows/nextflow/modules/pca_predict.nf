@@ -2,7 +2,7 @@ process INCREMENTAL_PCA_PREDICT {
     publishDir "${params.outdir}/pca/predictions/", mode: 'copy'
 
     input:
-    path local_dataset
+    val  dataset_dir
     path pca_model
     path onepass_csv
     path hvg_csv
@@ -16,8 +16,16 @@ process INCREMENTAL_PCA_PREDICT {
     """
     mkdir -p outputs/predictions
 
+    if ${params.gcp_download}; then
+        mkdir -p /tmp/dataset
+        gcloud storage cp --quiet '${dataset_dir}/*.h5ad' /tmp/dataset/
+        _dataset_dir=/tmp/dataset
+    else
+        _dataset_dir='${dataset_dir}'
+    fi
+
     ${params.python3_bin} \$(which render_config.py) ${base_yaml} \
-        "dataset_dir=./${local_dataset}" \
+        "dataset_dir=\${_dataset_dir}" \
         "num_workers=${params.num_workers}" \
         "prefetch_factor=${params.prefetch_factor}" \
         "accelerator=${params.accelerator}" \

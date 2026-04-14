@@ -21,7 +21,10 @@ include { HIGHLY_VARIABLE_GENES   } from './modules/hvg.nf'
 include { INCREMENTAL_PCA_PLUS_PREDICTION } from './modules/pca_plus_predict.nf'
 
 workflow {
-    dataset_ch         = Channel.value(file(params.dataset_dir))
+    dataset_ch = Channel.value(
+        params.dataset_dir.startsWith('gs://')
+            ? params.dataset_dir
+            : file(params.dataset_dir).toAbsolutePath().toString())
     cfg_onepass_ch     = Channel.value(file(params.config_onepass))
     cfg_hvg_ch         = Channel.value(file(params.config_hvg))
     cfg_pca_ch         = Channel.value(file(params.config_pca))

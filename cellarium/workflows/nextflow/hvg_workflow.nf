@@ -15,7 +15,10 @@ params.batch_size      = 5000
 include { HIGHLY_VARIABLE_GENES } from './modules/hvg.nf'
 
 workflow {
-    dataset_ch = Channel.value(file(params.dataset_dir))
+    dataset_ch = Channel.value(
+        params.dataset_dir.startsWith('gs://')
+            ? params.dataset_dir
+            : file(params.dataset_dir).toAbsolutePath().toString())
     cfg_ch     = Channel.value(file(params.config_hvg))
 
     HIGHLY_VARIABLE_GENES(dataset_ch, cfg_ch)

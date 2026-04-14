@@ -28,8 +28,14 @@ include { INCREMENTAL_PCA         } from './modules/pca.nf'
 include { INCREMENTAL_PCA_PREDICT } from './modules/pca_predict.nf'
 
 workflow {
-    train_ch       = Channel.value(file(params.train_dataset_dir))
-    predict_ch     = Channel.value(file(params.predict_dataset_dir))
+    train_ch       = Channel.value(
+        params.train_dataset_dir.startsWith('gs://')
+            ? params.train_dataset_dir
+            : file(params.train_dataset_dir).toAbsolutePath().toString())
+    predict_ch     = Channel.value(
+        params.predict_dataset_dir.startsWith('gs://')
+            ? params.predict_dataset_dir
+            : file(params.predict_dataset_dir).toAbsolutePath().toString())
     cfg_onepass_ch     = Channel.value(file(params.config_onepass))
     cfg_hvg_ch         = Channel.value(file(params.config_hvg))
     cfg_pca_ch         = Channel.value(file(params.config_pca))

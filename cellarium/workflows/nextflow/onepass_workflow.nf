@@ -12,7 +12,10 @@ params.batch_size      = 5000
 include { ONEPASS_MEAN_VAR } from './modules/onepass.nf'
 
 workflow {
-    dataset_ch = Channel.value(file(params.dataset_dir))
+    dataset_ch = Channel.value(
+        params.dataset_dir.startsWith('gs://')
+            ? params.dataset_dir
+            : file(params.dataset_dir).toAbsolutePath().toString())
     cfg_ch     = Channel.value(file(params.config_onepass))
 
     ONEPASS_MEAN_VAR(dataset_ch, cfg_ch)
