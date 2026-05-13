@@ -8,7 +8,7 @@ process INCREMENTAL_PCA {
     path base_yaml
 
     output:
-    path 'outputs/checkpoints/pca_final.ckpt', emit: final_model
+    path 'outputs/checkpoints/last.ckpt', emit: final_model
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
     script:

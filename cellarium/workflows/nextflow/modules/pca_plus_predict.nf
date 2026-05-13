@@ -9,7 +9,7 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
     path base_predict_yaml
 
     output:
-    path 'outputs/checkpoints/pca_final.ckpt', emit: final_model
+    path 'outputs/checkpoints/last.ckpt', emit: final_model
     path 'outputs/predictions/batch*.csv.gz',  emit: pcs
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
 
@@ -42,7 +42,7 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "var_names_key=${params.var_names_key}" \
-        "pca_model=outputs/checkpoints/pca_final.ckpt" \
+        "pca_model=outputs/checkpoints/last.ckpt" \
         "onepass_csv=./${onepass_csv}" \
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}" \

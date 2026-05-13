@@ -12,8 +12,7 @@ trainer:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         dirpath: ./outputs/checkpoints/
-        filename: "pca_final"
-        save_weights_only: true
+        save_last: true
 model:
   cpu_transforms:
     - class_path: cellarium.ml.transforms.Filter
