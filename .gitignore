@@ -1,5 +1,12 @@
 my_configs/
 
+# nextflow
+.nextflow*
+.nextflow/
+local_outputs/
+work/
+nextflow*.html
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
