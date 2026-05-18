@@ -16,8 +16,8 @@ trainer:
     init_args:
       every_n_epochs: 1
   max_epochs: 20
-  log_every_n_steps: 100
-  val_check_interval: 100
+  log_every_n_steps: 1000
+  val_check_interval: 10000
   gradient_clip_algorithm: norm
   gradient_clip_val: 1.0
   inference_mode: false
@@ -82,7 +82,11 @@ model:
       n_latent: 64
   optim_fn: torch.optim.AdamW
   optim_kwargs:
-    lr: 4e-4
+    lr: 1e-3
+  scheduler_fn: torch.optim.lr_scheduler.LinearLR
+  scheduler_kwargs:
+    start_factor: 0.01
+    total_iters: 100000
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
