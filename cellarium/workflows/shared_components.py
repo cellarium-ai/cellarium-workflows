@@ -579,6 +579,10 @@ def get_train_op_requirements() -> list[str]:
         "tensorboard",
         "psutil",
         "ruamel.yaml",
+        "pyarrow",
+        "fastparquet",
+        "owlready2",
+        "networkx",
     ]
 
 
