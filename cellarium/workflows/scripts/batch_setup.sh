@@ -44,6 +44,16 @@ else
     echo "⚠️  Docker NVIDIA runtime not detected"
 fi
 
+# increase file i/o read-ahead
+LOCAL_SSD_MOUNT="/mnt/disks/local-ssd"
+LOCAL_SSD_DEVICE=$(findmnt -n -o SOURCE "$LOCAL_SSD_MOUNT" 2>/dev/null || df -P "$LOCAL_SSD_MOUNT" 2>/dev/null | tail -1 | awk '{print $1}')
+if [ -n "$LOCAL_SSD_DEVICE" ]; then
+    echo "⚡ Increasing file I/O read-ahead for $LOCAL_SSD_DEVICE (mounted at $LOCAL_SSD_MOUNT)..."
+    sudo blockdev --setra 8192 "$LOCAL_SSD_DEVICE"
+else
+    echo "⚠️  Could not determine block device for $LOCAL_SSD_MOUNT, skipping read-ahead tuning"
+fi
+
 # Install required Python packages
 echo "📦 Installing Python packages..."
 if [ ! -z "$TRAIN_OP_REQUIREMENTS" ]; then
