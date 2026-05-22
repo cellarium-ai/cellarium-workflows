@@ -6,14 +6,14 @@ trainer:
     init_args:
       broadcast_buffers: false
   max_epochs: 2
-  default_root_dir: gs://cellarium-dev-central/workflows/20260409_scvi_seurat_v3_8k_batch_suspension
+  default_root_dir: gs://cellarium-dev-central/workflows/20260519_scvi_seurat_v3_4k_batch_suspension
 model:
   model:
     class_path: cellarium.ml.models.HVGSeuratV3
     init_args:
-      n_top_genes: 8000
+      n_top_genes: 4000
       use_batch_key: true
-      flavor: seurat_v3
+      flavor: seurat_v3_paper
 data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
@@ -42,5 +42,5 @@ data:
       convert_fn: cellarium.ml.utilities.data.categories_to_codes
   batch_size: 5000
   num_workers: 8
-  prefetch_factor: 4
+  prefetch_factor: 2
 ckpt_path: null
