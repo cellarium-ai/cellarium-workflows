@@ -818,7 +818,8 @@ def create_batch_script(
     batch_setup_script = get_batch_setup_script()
 
     return f'''#!/bin/bash
-set -e
+set -euxo pipefail
+export PYTHONFAULTHANDLER=1  # better logging for python crashes
 
 # Set up environment variables for the setup script
 export TOOL="{tool}"

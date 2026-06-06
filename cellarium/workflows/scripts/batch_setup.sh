@@ -3,12 +3,13 @@
 # This script installs Python packages and sets up the environment
 # Note: GPU drivers are automatically installed by Google Cloud Batch when GPUs are allocated
 
-set -e
+set -euxo pipefail
 
 # Set environment variables to prevent interactive prompts
 export DEBIAN_FRONTEND=noninteractive
 export TZ=UTC
 export NEEDRESTART_MODE=a  # Automatic restart services without prompting
+export PYTHONFAULTHANDLER=1  # better logging for python crashes
 
 echo "🚀 Starting Google Cloud Batch setup..."
 
