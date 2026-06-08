@@ -15,8 +15,9 @@ fi
 
 pip install "git+https://github.com/cellarium-ai/cellarium-ml.git@${ref}"
 
-# Increase i/o read-ahead on the local SSD (mounted at /tmp by Google Batch).
-LOCAL_SSD_DEVICE=$(findmnt -n -o SOURCE /tmp 2>/dev/null || df -P /tmp 2>/dev/null | tail -1 | awk '{print $1}')
-if [ -n "$LOCAL_SSD_DEVICE" ]; then
-    sudo blockdev --setra 8192 "$LOCAL_SSD_DEVICE"
-fi
+# no sudo, removing this:
+# # Increase i/o read-ahead on the local SSD (mounted at /tmp by Google Batch).
+# LOCAL_SSD_DEVICE=$(findmnt -n -o SOURCE /tmp 2>/dev/null || df -P /tmp 2>/dev/null | tail -1 | awk '{print $1}')
+# if [ -n "$LOCAL_SSD_DEVICE" ]; then
+#     sudo blockdev --setra 8192 "$LOCAL_SSD_DEVICE"
+# fi
