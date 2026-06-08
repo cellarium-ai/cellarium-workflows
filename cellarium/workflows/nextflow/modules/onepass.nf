@@ -21,6 +21,10 @@ process ONEPASS_MEAN_VAR {
         "num_workers=${params.num_workers}" \
         "prefetch_factor=${params.prefetch_factor}" \
         "var_names_key=${params.var_names_key}" \
+        "total_mrna_umis_key=${params.total_mrna_umis_key}" \
+        "target_sum=${params.target_sum}" \
+        "apply_log1p=${params.apply_log1p}" \
+        "sparse_dataloader=${params.sparse_dataloader}" \
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "max_cache_size=${params.max_cache_size}"

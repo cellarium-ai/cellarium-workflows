@@ -11,8 +11,15 @@ trainer:
   default_root_dir: ./outputs
 model:
   transforms:
-    - cellarium.ml.transforms.NormalizeTotal
+{% if sparse_dataloader %}
+    - cellarium.ml.transforms.Densify
+{% endif %}
+    - class_path: cellarium.ml.transforms.NormalizeTotal
+      init_args:
+        target_sum: {{ target_sum }}
+{% if apply_log1p %}
     - cellarium.ml.transforms.Log1p
+{% endif %}
   model:
     class_path: cellarium.ml.models.OnePassMeanVarStd
     init_args:
@@ -34,13 +41,21 @@ data:
   batch_keys:
     x_ng:
       attr: X
+{% if sparse_dataloader %}
+      convert_fn: cellarium.ml.utilities.data.to_torch_sparse_csr
+{% else %}
       convert_fn: cellarium.ml.utilities.data.densify
+{% endif %}
     var_names_g:
 {% if var_names_key %}
       attr: var
       key: {{ var_names_key }}
 {% else %}
       attr: var_names
+{% endif %}
+{% if total_mrna_umis_key %}
+      attr: obs
+      key: {{ total_mrna_umis_key }}
 {% endif %}
   batch_size: {{ batch_size }}
   iteration_strategy: cache_efficient
