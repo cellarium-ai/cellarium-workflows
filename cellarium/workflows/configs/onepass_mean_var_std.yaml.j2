@@ -14,9 +14,11 @@ model:
 {% if sparse_dataloader %}
     - cellarium.ml.transforms.Densify
 {% endif %}
+{% if apply_normalize_total %}
     - class_path: cellarium.ml.transforms.NormalizeTotal
       init_args:
         target_count: {{ target_count }}
+{% endif %}
 {% if apply_log1p %}
     - cellarium.ml.transforms.Log1p
 {% endif %}

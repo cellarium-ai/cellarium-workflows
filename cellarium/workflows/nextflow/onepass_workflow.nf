@@ -7,6 +7,7 @@ params.num_workers     = 8
 params.prefetch_factor = 4
 params.var_names_key   = 'null'
 params.total_mrna_umis_key = 'null'
+params.apply_normalize_total = true
 params.target_count      = 10000
 params.apply_log1p     = true
 params.sparse_dataloader = true
