@@ -16,7 +16,7 @@ model:
 {% endif %}
     - class_path: cellarium.ml.transforms.NormalizeTotal
       init_args:
-        target_count: {{ target_sum }}
+        target_count: {{ target_count }}
 {% if apply_log1p %}
     - cellarium.ml.transforms.Log1p
 {% endif %}

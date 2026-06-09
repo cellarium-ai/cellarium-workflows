@@ -22,7 +22,7 @@ process ONEPASS_MEAN_VAR {
         "prefetch_factor=${params.prefetch_factor}" \
         "var_names_key=${params.var_names_key}" \
         "total_mrna_umis_key=${params.total_mrna_umis_key}" \
-        "target_sum=${params.target_sum}" \
+        "target_count=${params.target_count}" \
         "apply_log1p=${params.apply_log1p}" \
         "sparse_dataloader=${params.sparse_dataloader}" \
         "accelerator=${params.accelerator}" \
