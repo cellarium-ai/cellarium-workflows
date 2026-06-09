@@ -102,6 +102,10 @@ def main():
     rendered = template.render(**context)
     Path(args.output).write_text(rendered)
 
+    print(f"Rendered config written to {args.output}\n\n")
+    print(rendered)
+    print("\n\n")
+
 
 if __name__ == "__main__":
     main()
