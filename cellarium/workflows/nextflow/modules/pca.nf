@@ -10,6 +10,7 @@ process INCREMENTAL_PCA {
     output:
     path 'outputs/checkpoints/last.ckpt', emit: final_model
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'run_config.yaml', emit: config_yaml
 
     script:
     """

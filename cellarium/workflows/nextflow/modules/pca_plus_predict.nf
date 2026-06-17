@@ -12,6 +12,8 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
     path 'outputs/checkpoints/last.ckpt', emit: final_model
     path 'outputs/predictions/batch*.csv.gz',  emit: pcs
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'train_config.yaml', emit: train_config_yaml
+    path 'predict_config.yaml', emit: predict_config_yaml
 
     script:
     """
@@ -36,6 +38,7 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "max_cache_size=${params.max_cache_size}"
 
     run_with_gpu_monitor.sh cellarium-ml incremental_pca fit -c run_config.yaml
+    cp run_config.yaml train_config.yaml
 
     ${params.python3_bin} \$(which render_config.py) ${base_predict_yaml} \
         "dataset_dir=\${_dataset_dir}" \
@@ -56,5 +59,6 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "max_cache_size=${params.max_cache_size}"
 
     run_with_gpu_monitor.sh cellarium-ml incremental_pca predict -c run_config.yaml
+    cp run_config.yaml predict_config.yaml
     """
 }

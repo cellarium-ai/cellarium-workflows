@@ -8,6 +8,7 @@ process ONEPASS_MEAN_VAR {
     output:
     path 'outputs/onepass_mean_var_std.csv', emit: onepass_csv
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'run_config.yaml', emit: config_yaml
 
     script:
     """

@@ -12,6 +12,7 @@ process INCREMENTAL_PCA_PREDICT {
     // grab all the output files
     path 'outputs/predictions/batch*.csv.gz', emit: pcs
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'run_config.yaml', emit: config_yaml
 
     script:
     """

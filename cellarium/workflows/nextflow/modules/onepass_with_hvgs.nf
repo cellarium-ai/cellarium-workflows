@@ -11,6 +11,7 @@ process ONEPASS_MEAN_VAR_WITH_HVGS {
     path 'seurat_hvgs.csv', emit: seurat_hvg_csv
     path 'kotliar_hvgs.csv', emit: kotliar_hvg_csv
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'run_config.yaml', emit: config_yaml
 
     script:
     """

@@ -8,6 +8,7 @@ process SEURAT_V3_HIGHLY_VARIABLE_GENES {
     output:
     path 'outputs/hvg_genes__top*__hvg_only.csv', emit: hvg_csv
     path 'gpu_metrics.log', optional: true, emit: gpu_metrics
+    path 'run_config.yaml', emit: config_yaml
 
     script:
     """
