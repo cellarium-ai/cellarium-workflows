@@ -24,6 +24,11 @@ params.max_cache_size     = 4
 params.hvg_method         = 'seurat'  // or 'kotliar' or 'seurat_v3'
 params.use_pflogpf        = false  // whether to use PFlogPF data normalization
 params.zscore_genes       = true  // whether to z-score genes before PCA
+params.total_mrna_umis_key = 'raw_sum'
+params.apply_normalize_total = true
+params.target_count      = 10000
+params.apply_log1p     = true
+params.sparse_dataloader = true
 
 include { ONEPASS_MEAN_VAR_WITH_HVGS        } from './modules/onepass_with_hvgs.nf'
 include { SEURAT_V3_HIGHLY_VARIABLE_GENES   } from './modules/seurat_v3_hvg.nf'
