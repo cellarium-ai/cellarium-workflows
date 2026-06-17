@@ -40,7 +40,9 @@ def main():
     }
 
     hvg_df = hvg_fun(**kwargs)
-    hvg_df.to_csv(args.output, index=False)
+    hvg_df.index.name = "gene"
+    hvg_df = hvg_df[hvg_df["highly_variable"]].copy()
+    hvg_df.to_csv(args.output, index=True)
     print(f"Highly variable genes written to {args.output}")
 
 
