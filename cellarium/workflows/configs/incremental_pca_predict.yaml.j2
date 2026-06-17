@@ -6,13 +6,13 @@ trainer:
     dict_kwargs:
       broadcast_buffers: false
   max_epochs: 1
-  inference_mode: true
   logger: null
   default_root_dir: ./outputs
   callbacks:
     - class_path: cellarium.ml.callbacks.PredictionWriter
       init_args:
         output_dir: ./outputs/predictions
+  inference_mode: true
 model:
   cpu_transforms:
     - class_path: cellarium.ml.transforms.Filter
