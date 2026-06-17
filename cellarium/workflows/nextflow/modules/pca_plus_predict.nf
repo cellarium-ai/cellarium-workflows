@@ -44,6 +44,11 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "var_names_key=${params.var_names_key}" \
+        "apply_normalize_total=${params.apply_normalize_total}" \
+        "target_count=${params.target_count}" \
+        "apply_log1p=${params.apply_log1p}" \
+        "use_pflogpf=${params.use_pflogpf}" \
+        "zscore_genes=${params.zscore_genes}" \
         "pca_model=outputs/checkpoints/last.ckpt" \
         "onepass_csv=./${onepass_csv}" \
         "hvg_csv=./${hvg_csv}" \

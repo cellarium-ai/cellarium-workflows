@@ -28,6 +28,9 @@ process INCREMENTAL_PCA_PREDICT {
         "batch_size=${params.batch_size}" \
         "var_names_key=${params.var_names_key}" \
         "use_pflogpf=${params.use_pflogpf}" \
+        "apply_normalize_total=${params.apply_normalize_total}" \
+        "target_count=${params.target_count}" \
+        "apply_log1p=${params.apply_log1p}" \
         "zscore_genes=${params.zscore_genes}" \
         "pca_model=./${pca_model}" \
         "onepass_csv=./${onepass_csv}" \

@@ -28,6 +28,7 @@ process ONEPASS_MEAN_VAR_WITH_HVGS {
         "apply_normalize_total=${params.apply_normalize_total}" \
         "target_count=${params.target_count}" \
         "apply_log1p=${params.apply_log1p}" \
+        "use_pflogpf=${params.use_pflogpf}" \
         "sparse_dataloader=${params.sparse_dataloader}" \
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
