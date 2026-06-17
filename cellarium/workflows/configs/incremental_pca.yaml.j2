@@ -23,7 +23,7 @@ model:
           loader_fn: pandas.read_csv
           attr: "gene"
           convert_fn: pandas.Series.to_list
-        ordering: false
+        ordering: true
   transforms:
     - cellarium.ml.transforms.Densify
 {% if use_pflogpf %}
