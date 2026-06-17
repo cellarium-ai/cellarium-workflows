@@ -1,4 +1,4 @@
-process HIGHLY_VARIABLE_GENES {
+process SEURAT_V3_HIGHLY_VARIABLE_GENES {
     publishDir "${params.outdir}/hvg_seurat_v3/", mode: 'copy'
 
     input:

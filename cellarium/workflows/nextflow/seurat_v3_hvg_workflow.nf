@@ -14,7 +14,7 @@ params.accelerator     = 'auto'
 params.batch_size      = 5000
 params.max_cache_size  = 4
 
-include { HIGHLY_VARIABLE_GENES } from './modules/hvg.nf'
+include { SEURAT_V3_HIGHLY_VARIABLE_GENES } from './modules/seurat_v3_hvg.nf'
 
 workflow {
     dataset_ch = Channel.value(
@@ -23,5 +23,5 @@ workflow {
             : file(params.dataset_dir).toAbsolutePath().toString())
     cfg_ch     = Channel.value(file(params.config_hvg))
 
-    HIGHLY_VARIABLE_GENES(dataset_ch, cfg_ch)
+    SEURAT_V3_HIGHLY_VARIABLE_GENES(dataset_ch, cfg_ch)
 }

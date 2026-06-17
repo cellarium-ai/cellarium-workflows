@@ -27,6 +27,8 @@ process INCREMENTAL_PCA_PREDICT {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "var_names_key=${params.var_names_key}" \
+        "use_pflogpf=${params.use_pflogpf}" \
+        "zscore_genes=${params.zscore_genes}" \
         "pca_model=./${pca_model}" \
         "onepass_csv=./${onepass_csv}" \
         "hvg_csv=./${hvg_csv}" \

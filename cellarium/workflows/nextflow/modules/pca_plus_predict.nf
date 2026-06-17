@@ -28,6 +28,8 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "var_names_key=${params.var_names_key}" \
+        "use_pflogpf=${params.use_pflogpf}" \
+        "zscore_genes=${params.zscore_genes}" \
         "onepass_csv=./${onepass_csv}" \
         "hvg_csv=./${hvg_csv}" \
         "n_components=${params.n_components}" \
