@@ -14,6 +14,9 @@ model:
 {% if sparse_dataloader %}
     - cellarium.ml.transforms.Densify
 {% endif %}
+{% if use_pflogpf %}
+    - cellarium.ml.transforms.PFlogPF
+{% else %}
 {% if apply_normalize_total %}
     - class_path: cellarium.ml.transforms.NormalizeTotal
       init_args:
@@ -21,6 +24,7 @@ model:
 {% endif %}
 {% if apply_log1p %}
     - cellarium.ml.transforms.Log1p
+{% endif %}
 {% endif %}
   model:
     class_path: cellarium.ml.models.OnePassMeanVarStd

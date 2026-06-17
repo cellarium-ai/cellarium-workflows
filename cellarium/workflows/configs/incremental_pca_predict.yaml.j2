@@ -25,8 +25,20 @@ model:
           convert_fn: pandas.Series.to_list
         ordering: true
   transforms:
-    - cellarium.ml.transforms.NormalizeTotal
+    - cellarium.ml.transforms.Densify
+{% if use_pflogpf %}
+    - cellarium.ml.transforms.PFlogPF
+{% else %}
+{% if apply_normalize_total %}
+    - class_path: cellarium.ml.transforms.NormalizeTotal
+      init_args:
+        target_count: {{ target_count }}
+{% endif %}
+{% if apply_log1p %}
     - cellarium.ml.transforms.Log1p
+{% endif %}
+{% endif %}
+{% if zscore_genes %}
     - class_path: cellarium.ml.transforms.ZScore
       init_args:
         !FileMultiLoader
@@ -42,6 +54,7 @@ model:
           var_names_g:
             attr: var_names_g
             convert_fn: pandas.Series.to_numpy
+{% endif %}
   model:
     class_path: cellarium.ml.models.IncrementalPCA
     init_args:
@@ -64,7 +77,7 @@ data:
   batch_keys:
     x_ng:
       attr: X
-      convert_fn: cellarium.ml.utilities.data.densify
+      convert_fn: cellarium.ml.utilities.data.keep_sparse
     obs_names_n:
       attr: obs_names
     var_names_g:
