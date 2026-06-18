@@ -2,7 +2,8 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
     publishDir "${params.outdir}/pca/", mode: 'copy'
 
     input:
-    val  dataset_dir
+    val  train_dataset_dir
+    val  predict_dataset_dir
     path onepass_csv
     path hvg_csv
     path base_yaml
@@ -21,10 +22,10 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
     mkdir -p outputs/predictions
 
     maybe_pip_install.sh "${params.cellarium_ml_ref}"
-    _dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${dataset_dir}")
+    _train_dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${train_dataset_dir}")
 
     ${params.python3_bin} \$(which render_config.py) ${base_yaml} \
-        "dataset_dir=\${_dataset_dir}" \
+        "dataset_dir=\${_train_dataset_dir}" \
         "num_workers=${params.num_workers}" \
         "prefetch_factor=${params.prefetch_factor}" \
         "accelerator=${params.accelerator}" \
@@ -38,10 +39,17 @@ process INCREMENTAL_PCA_PLUS_PREDICTION {
         "max_cache_size=${params.max_cache_size}"
 
     run_with_gpu_monitor.sh cellarium-ml incremental_pca fit -c run_config.yaml
-    cp run_config.yaml train_config.yaml
+    cp run_config.yaml train_config.yaml    
+
+    if [ "${predict_dataset_dir}" != "${train_dataset_dir}" ]; then
+        rm -r \${_train_dataset_dir}  // remove training dataset before staging prediction dataset
+        _predict_dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${predict_dataset_dir}")
+    else
+        _predict_dataset_dir=\${_train_dataset_dir}
+    fi
 
     ${params.python3_bin} \$(which render_config.py) ${base_predict_yaml} \
-        "dataset_dir=\${_dataset_dir}" \
+        "dataset_dir=\${_predict_dataset_dir}" \
         "num_workers=${params.num_workers}" \
         "prefetch_factor=${params.prefetch_factor}" \
         "accelerator=${params.accelerator}" \

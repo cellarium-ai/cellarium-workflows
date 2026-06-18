@@ -16,6 +16,7 @@ params.accelerator        = 'auto'
 params.batch_size         = 5000
 params.max_cache_size     = 4
 params.hvg_method         = 'seurat'  // or 'kotliar' or 'seurat_v3'
+params.seurat_v3_flavor   = 'seurat_v3'  // or 'seurat_v3_paper' -- only relevant if hvg_method is seurat_v3
 params.use_pflogpf        = false  // whether to use PFlogPF data normalization
 params.zscore_genes       = true  // whether to z-score genes before PCA
 params.total_mrna_umis_key = 'raw_sum'
