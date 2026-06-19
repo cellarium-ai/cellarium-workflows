@@ -1,0 +1,17 @@
+{% if zscore_genes %}
+    - class_path: cellarium.ml.transforms.ZScore
+      init_args:
+        !FileMultiLoader
+        file_path: {{ onepass_csv }}
+        loader_fn: pandas.read_csv
+        fields:
+          mean_g:
+            attr: mean_g.values
+            convert_fn: torch.FloatTensor
+          std_g:
+            attr: std_g.values
+            convert_fn: torch.FloatTensor
+          var_names_g:
+            attr: var_names_g
+            convert_fn: pandas.Series.to_numpy
+{% endif %}

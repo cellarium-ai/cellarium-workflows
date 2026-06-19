@@ -14,6 +14,10 @@ params.accelerator     = 'auto'
 params.batch_size      = 5000
 params.max_cache_size  = 4
 
+def _run_ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())
+params.run_outdir = params.run_outdir ?: "${params.outdir}/${params.run_label}/${_run_ts}"
+
+include { RENDER_SEURAT_HVG_CONFIGS } from './modules/render_configs.nf'
 include { SEURAT_V3_HIGHLY_VARIABLE_GENES } from './modules/seurat_v3_hvg.nf'
 
 workflow {
@@ -21,7 +25,17 @@ workflow {
         params.dataset_dir.startsWith('gs://')
             ? params.dataset_dir
             : file(params.dataset_dir).toAbsolutePath().toString())
-    cfg_ch     = Channel.value(file(params.config_hvg))
+    configs_dir_ch = Channel.value(file(params.config_hvg).parent)
 
-    SEURAT_V3_HIGHLY_VARIABLE_GENES(dataset_ch, cfg_ch)
+    render_out = RENDER_SEURAT_HVG_CONFIGS(
+        dataset_dir = dataset_ch,
+        run_name    = workflow.runName,
+        session_id  = workflow.sessionId,
+        configs_dir = configs_dir_ch
+    )
+
+    SEURAT_V3_HIGHLY_VARIABLE_GENES(
+        dataset_dir          = dataset_ch,
+        seurat_v3_hvg_config = render_out.seurat_v3_hvg_config
+    )
 }

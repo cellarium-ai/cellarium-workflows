@@ -1,0 +1,10 @@
+  cpu_transforms:
+    - class_path: cellarium.ml.transforms.Filter
+      init_args:
+        filter_list:
+          !FileLoader
+          file_path: {{ hvg_csv }}
+          loader_fn: pandas.read_csv
+          attr: "gene"
+          convert_fn: pandas.Series.to_list
+        ordering: true

@@ -1,5 +1,5 @@
 process HIGHLY_VARIABLE_GENES {
-    publishDir "${params.outdir}/hvg/", mode: 'copy'
+    publishDir "${params.run_outdir}/hvg/", mode: 'copy'
 
     input:
     val  onepass_csv

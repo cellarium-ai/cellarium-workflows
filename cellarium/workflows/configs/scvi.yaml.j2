@@ -17,16 +17,7 @@ trainer:
       init_args:
         logging_interval: step
 model:
-  cpu_transforms:
-    - class_path: cellarium.ml.transforms.Filter
-      init_args:
-        filter_list:
-          !FileLoader
-          file_path: {{ hvg_csv }}
-          loader_fn: pandas.read_csv
-          attr: "gene"
-          convert_fn: pandas.Series.to_list
-        ordering: true
+{% include 'partials/_filter_cpu_transforms.yaml.j2' %}
   model:
     class_path: cellarium.ml.models.SingleCellVariationalInference
     init_args:
@@ -64,15 +55,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames:
-{% for f in filenames %}
-        - {{ f }}
-{% endfor %}
-      limits:
-{% for l in limits %}
-        - {{ l }}
-{% endfor %}
-      max_cache_size: {{ max_cache_size }}
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
 {% if batch_key %}
       obs_columns_to_validate:
         - {{ batch_index_n }}
@@ -86,13 +69,7 @@ data:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
-    var_names_g:
-{% if var_names_key %}
-      attr: var
-      key: {{ var_names_key }}
-{% else %}
-      attr: var_names
-{% endif %}
+{% include 'partials/_var_names_g.yaml.j2' %}
     batch_index_n:
       attr: obs
       key: {{ batch_key }}

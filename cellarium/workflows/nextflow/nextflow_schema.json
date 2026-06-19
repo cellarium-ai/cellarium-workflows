@@ -1,0 +1,246 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "$id": "https://raw.githubusercontent.com/cellarium-ai/cellarium-workflows/main/cellarium/workflows/nextflow/nextflow_schema.json",
+    "title": "Cellarium-ML Nextflow Workflow Parameters",
+    "description": "JSON Schema for the cellarium-ml Nextflow workflows. Enables --validate-params and nextflow run --help.",
+    "type": "object",
+    "definitions": {
+        "shared_compute": {
+            "title": "Compute settings",
+            "type": "object",
+            "properties": {
+                "num_workers": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 8,
+                    "description": "Number of DataLoader worker processes."
+                },
+                "prefetch_factor": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 4,
+                    "description": "Number of batches to prefetch per DataLoader worker."
+                },
+                "accelerator": {
+                    "type": "string",
+                    "default": "auto",
+                    "description": "PyTorch Lightning accelerator. 'auto' selects GPU if available."
+                },
+                "batch_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 5000,
+                    "description": "Number of cells per training batch."
+                },
+                "max_cache_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 4,
+                    "description": "Maximum number of AnnData shards cached in memory."
+                },
+                "sparse_dataloader": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether to use sparse tensors in the DataLoader."
+                }
+            }
+        },
+        "shared_normalization": {
+            "title": "Data normalization",
+            "type": "object",
+            "properties": {
+                "var_names_key": {
+                    "type": "string",
+                    "default": "null",
+                    "description": "obs column holding gene identifiers. Use 'null' to skip var filtering."
+                },
+                "total_mrna_umis_key": {
+                    "type": "string",
+                    "default": "null",
+                    "description": "obs column with total mRNA UMI counts for normalize_total."
+                },
+                "apply_normalize_total": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Apply total-count normalization before log1p."
+                },
+                "target_count": {
+                    "type": "number",
+                    "default": 10000,
+                    "description": "Target sum for normalize_total."
+                },
+                "apply_log1p": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Apply log1p transform after normalize_total."
+                },
+                "use_pflogpf": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use PFlogPF normalization instead of normalize_total+log1p."
+                }
+            }
+        },
+        "shared_infra": {
+            "title": "Infrastructure / GCP settings",
+            "type": "object",
+            "properties": {
+                "container": {
+                    "type": "string",
+                    "description": "Container image used by all GCP processes."
+                },
+                "python3_bin": {
+                    "type": "string",
+                    "description": "Python interpreter path for task scripts."
+                },
+                "google_project": {
+                    "type": "string",
+                    "default": "dsp-cellarium",
+                    "description": "GCP project ID."
+                },
+                "google_region": {
+                    "type": "string",
+                    "default": "us-central1",
+                    "description": "GCP region for Google Batch jobs."
+                },
+                "work_bucket": {
+                    "type": "string",
+                    "description": "GCS bucket path used as Nextflow workDir."
+                },
+                "spot": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use spot (preemptible) VMs on GCP."
+                },
+                "disk_size": {
+                    "type": "string",
+                    "default": "750 GB",
+                    "description": "Local SSD size provisioned per GCP task VM (multiple of 375 GB)."
+                },
+                "gcp_download": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true, stage_dataset.sh downloads dataset to local NVMe before training."
+                },
+                "smoke_test": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true (and gcp_download=true), stage_dataset.sh downloads only the first 10 .h5ad files."
+                },
+                "cellarium_ml_ref": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Git ref (tag/branch/SHA) of cellarium-ml to pip-install before each task. null uses the container image version."
+                },
+                "run_label": {
+                    "type": "string",
+                    "default": "cellarium-workflow",
+                    "description": "Human-readable label for this run; used in output directory paths and GCP batch labels."
+                },
+                "run_outdir": {
+                    "type": ["string", "null"],
+                    "default": null,
+                    "description": "Timestamped output root directory. Computed automatically from outdir + run_label if null."
+                }
+            }
+        }
+    },
+    "allOf": [
+        {"$ref": "#/definitions/shared_compute"},
+        {"$ref": "#/definitions/shared_normalization"},
+        {"$ref": "#/definitions/shared_infra"}
+    ],
+    "properties": {
+        "outdir": {
+            "type": "string",
+            "description": "Base output directory (local path or gs:// URI)."
+        },
+
+        "dataset_dir": {
+            "type": "string",
+            "description": "[onepass / seurat_v3_hvg workflows] Path or gs:// URI to the sharded .h5ad dataset directory."
+        },
+        "fit_dataset_dir": {
+            "type": "string",
+            "description": "[pca / pca_no_hvg workflows] Dataset used for training."
+        },
+        "predict_dataset_dir": {
+            "type": "string",
+            "description": "[pca / pca_no_hvg workflows] Dataset used for prediction (may equal fit_dataset_dir)."
+        },
+
+        "n_components": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 64,
+            "description": "Number of PCA components."
+        },
+        "n_top_genes": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 8000,
+            "description": "Number of highly-variable genes to select."
+        },
+        "zscore_genes": {
+            "type": "boolean",
+            "default": true,
+            "description": "Z-score genes before PCA."
+        },
+
+        "hvg_method": {
+            "type": "string",
+            "enum": ["seurat_v3", "seurat", "kotliar"],
+            "default": "seurat",
+            "description": "HVG selection method. 'seurat_v3' runs the GPU seurat-v3 model; 'seurat' and 'kotliar' use the CPU hvg_helper.py script."
+        },
+        "seurat_v3_flavor": {
+            "type": "string",
+            "enum": ["seurat_v3", "seurat_v3_paper"],
+            "default": "seurat_v3",
+            "description": "Flavor for seurat_v3 HVG selection."
+        },
+        "batch_index_n": {
+            "type": "string",
+            "default": "null",
+            "description": "obs column to use as batch variable in HVG and scVI models."
+        },
+
+        "onepass_csv": {
+            "type": "string",
+            "description": "[pca_no_hvg workflow] Path or gs:// URI to a pre-computed onepass_mean_var_std.csv."
+        },
+        "hvg_csv": {
+            "type": "string",
+            "description": "[pca_no_hvg / scvi workflows] Path or gs:// URI to a pre-computed HVG CSV."
+        },
+
+        "batch_key": {
+            "type": "string",
+            "description": "[scvi workflow] obs column to use as the scVI batch key."
+        },
+        "categorical_covariate_keys": {
+            "type": "string",
+            "default": "null",
+            "description": "[scvi workflow] Comma-separated obs columns to use as categorical covariates."
+        },
+        "n_latent": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 128,
+            "description": "[scvi workflow] Dimensionality of the scVI latent space."
+        },
+
+        "config_onepass": {
+            "type": "string",
+            "description": "Path to the onepass_mean_var_std.yaml.j2 Jinja2 template."
+        },
+        "config_hvg": {
+            "type": "string",
+            "description": "Path to the hvg_seurat_v3.yaml.j2 Jinja2 template."
+        },
+        "config_scvi": {
+            "type": "string",
+            "description": "Path to the scvi.yaml.j2 Jinja2 template."
+        }
+    }
+}

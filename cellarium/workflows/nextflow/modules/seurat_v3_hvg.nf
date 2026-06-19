@@ -1,9 +1,9 @@
 process SEURAT_V3_HIGHLY_VARIABLE_GENES {
-    publishDir "${params.outdir}/hvg_seurat_v3/", mode: 'copy'
+    publishDir "${params.run_outdir}/hvg_seurat_v3/", mode: 'copy'
 
     input:
     val  dataset_dir
-    path base_yaml
+    path seurat_v3_hvg_config
 
     output:
     path 'outputs/hvg_genes__top*__hvg_only.csv', emit: hvg_csv
@@ -15,19 +15,11 @@ process SEURAT_V3_HIGHLY_VARIABLE_GENES {
     mkdir -p outputs
 
     maybe_pip_install.sh "${params.cellarium_ml_ref}"
-    _dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${dataset_dir}")
+    _dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${dataset_dir}" "${params.smoke_test}")
 
-    ${params.python3_bin} \$(which render_config.py) ${base_yaml} \
-        "dataset_dir=\${_dataset_dir}" \
-        "num_workers=${params.num_workers}" \
-        "prefetch_factor=${params.prefetch_factor}" \
-        "accelerator=${params.accelerator}" \
-        "batch_size=${params.batch_size}" \
-        "n_top_genes=${params.n_top_genes}" \
-        "flavor=${params.seurat_v3_flavor}" \
-        "batch_index_n=${params.batch_index_n}" \
-        "var_names_key=${params.var_names_key}" \
-        "max_cache_size=${params.max_cache_size}"
+    ${params.python3_bin} \$(which render_config.py) \
+        --patch run_config.yaml:${seurat_v3_hvg_config} \
+        "dataset_dir=\${_dataset_dir}"
 
     run_with_gpu_monitor.sh cellarium-ml hvg_seurat_v3 fit -c run_config.yaml
     """

@@ -10,11 +10,16 @@ params.total_mrna_umis_key = 'null'
 params.apply_normalize_total = true
 params.target_count      = 10000
 params.apply_log1p     = true
+params.use_pflogpf     = false
 params.sparse_dataloader = true
 params.accelerator     = 'auto'
 params.batch_size      = 5000
 params.max_cache_size  = 4
 
+def _run_ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())
+params.run_outdir = params.run_outdir ?: "${params.outdir}/${params.run_label}/${_run_ts}"
+
+include { RENDER_ONEPASS_CONFIGS } from './modules/render_configs.nf'
 include { ONEPASS_MEAN_VAR } from './modules/onepass.nf'
 
 workflow {
@@ -22,7 +27,17 @@ workflow {
         params.dataset_dir.startsWith('gs://')
             ? params.dataset_dir
             : file(params.dataset_dir).toAbsolutePath().toString())
-    cfg_ch     = Channel.value(file(params.config_onepass))
+    configs_dir_ch = Channel.value(file(params.config_onepass).parent)
 
-    ONEPASS_MEAN_VAR(dataset_ch, cfg_ch)
+    render_out = RENDER_ONEPASS_CONFIGS(
+        dataset_dir = dataset_ch,
+        run_name    = workflow.runName,
+        session_id  = workflow.sessionId,
+        configs_dir = configs_dir_ch
+    )
+
+    ONEPASS_MEAN_VAR(
+        dataset_dir    = dataset_ch,
+        onepass_config = render_out.onepass_config
+    )
 }

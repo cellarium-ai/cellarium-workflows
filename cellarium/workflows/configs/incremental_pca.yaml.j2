@@ -14,47 +14,11 @@ trainer:
         dirpath: ./outputs/checkpoints/
         save_last: true
 model:
-  cpu_transforms:
-    - class_path: cellarium.ml.transforms.Filter
-      init_args:
-        filter_list:
-          !FileLoader
-          file_path: {{ hvg_csv }}
-          loader_fn: pandas.read_csv
-          attr: "gene"
-          convert_fn: pandas.Series.to_list
-        ordering: true
+{% include 'partials/_filter_cpu_transforms.yaml.j2' %}
   transforms:
     - cellarium.ml.transforms.Densify
-{% if use_pflogpf %}
-    - cellarium.ml.transforms.PFlogPF
-{% else %}
-{% if apply_normalize_total %}
-    - class_path: cellarium.ml.transforms.NormalizeTotal
-      init_args:
-        target_count: {{ target_count }}
-{% endif %}
-{% if apply_log1p %}
-    - cellarium.ml.transforms.Log1p
-{% endif %}
-{% endif %}
-{% if zscore_genes %}
-    - class_path: cellarium.ml.transforms.ZScore
-      init_args:
-        !FileMultiLoader
-        file_path: {{ onepass_csv }}
-        loader_fn: pandas.read_csv
-        fields:
-          mean_g:
-            attr: mean_g.values
-            convert_fn: torch.FloatTensor
-          std_g:
-            attr: std_g.values
-            convert_fn: torch.FloatTensor
-          var_names_g:
-            attr: var_names_g
-            convert_fn: pandas.Series.to_numpy
-{% endif %}
+{% include 'partials/_transforms_pflogpf.yaml.j2' %}
+{% include 'partials/_zscore_transform.yaml.j2' %}
   model:
     class_path: cellarium.ml.models.IncrementalPCA
     init_args:
@@ -64,27 +28,13 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames:
-{% for f in filenames %}
-        - {{ f }}
-{% endfor %}
-      limits:
-{% for l in limits %}
-        - {{ l }}
-{% endfor %}
-      max_cache_size: {{ max_cache_size }}
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
       obs_columns_to_validate: []
   batch_keys:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.keep_sparse
-    var_names_g:
-{% if var_names_key %}
-      attr: var
-      key: {{ var_names_key }}
-{% else %}
-      attr: var_names
-{% endif %}
+{% include 'partials/_var_names_g.yaml.j2' %}
   batch_size: {{ batch_size }}
   num_workers: {{ num_workers }}
   prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}

@@ -1,11 +1,9 @@
 #!/usr/bin/env nextflow
 
-params.dataset_dir        = 'gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files'
+params.fit_dataset_dir        = 'gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files'
+params.predict_dataset_dir    = 'gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files'
 params.outdir             = 'gs://cellarium-dev-central/workflows/tmp'
 params.config_onepass     = "${projectDir}/../configs/onepass_mean_var_std.yaml.j2"
-params.config_hvg         = "${projectDir}/../configs/hvg_seurat_v3.yaml.j2"
-params.config_pca         = "${projectDir}/../configs/incremental_pca.yaml.j2"
-params.config_pca_predict = "${projectDir}/../configs/incremental_pca_predict.yaml.j2"
 params.n_components       = 64
 params.n_top_genes        = 8000
 params.batch_index_n      = 'null'
@@ -25,47 +23,51 @@ params.target_count      = 10000
 params.apply_log1p     = true
 params.sparse_dataloader = true
 
+// Compute a timestamped output root so successive runs don't overwrite each other.
+// Override with --run_outdir gs://... to write to a specific path.
+def _run_ts = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date())
+params.run_outdir = params.run_outdir ?: "${params.outdir}/${params.run_label}/${_run_ts}"
+
 def VALID_HVG_METHODS = ['seurat_v3', 'seurat', 'kotliar']
 if (!(params.hvg_method in VALID_HVG_METHODS)) {
     error "Invalid hvg_method '${params.hvg_method}'. Must be one of: ${VALID_HVG_METHODS.join(', ')}"
 }
 
-include { ONEPASS_MEAN_VAR_WITH_HVGS } from './modules/onepass_with_hvgs.nf'
-include { SEURAT_V3_HIGHLY_VARIABLE_GENES   } from './modules/seurat_v3_hvg.nf'
-include { INCREMENTAL_PCA_PLUS_PREDICTION } from './modules/pca_plus_predict.nf'
+include { RENDER_PCA_CONFIGS } from './modules/render_configs.nf'
+include { ONEPASS_HVG_INCREMENTAL_PCA_PLUS_PREDICTION } from './modules/combo_hvg_pca_predict.nf'
 
 workflow {
-    dataset_ch = Channel.value(
-        params.dataset_dir.startsWith('gs://')
-            ? params.dataset_dir
-            : file(params.dataset_dir).toAbsolutePath().toString())
-    cfg_onepass_ch     = Channel.value(file(params.config_onepass))
-    cfg_hvg_ch         = Channel.value(file(params.config_hvg))
-    cfg_pca_ch         = Channel.value(file(params.config_pca))
-    cfg_pca_predict_ch = Channel.value(file(params.config_pca_predict))
+    fit_dataset_ch = Channel.value(
+        params.fit_dataset_dir.startsWith('gs://')
+            ? params.fit_dataset_dir
+            : file(params.fit_dataset_dir).toAbsolutePath().toString())
+    predict_dataset_ch = Channel.value(
+        params.predict_dataset_dir.startsWith('gs://')
+            ? params.predict_dataset_dir
+            : file(params.predict_dataset_dir).toAbsolutePath().toString())
 
-    // ONEPASS plus HVG helper scripts
-    onepass_out = ONEPASS_MEAN_VAR_WITH_HVGS(
-        dataset_dir=dataset_ch, 
-        base_yaml=cfg_onepass_ch, 
-        n_top_genes=params.n_top_genes
+    // configs_dir stages the entire configs/ directory into each process work dir,
+    // making all templates and partials available to render_config.py.
+    configs_dir_ch = Channel.value(file(params.config_onepass).parent)
+
+    // Run locally first: render preview configs + write provenance record to GCS.
+    render_out = RENDER_PCA_CONFIGS(
+        fit_dataset_dir    = fit_dataset_ch,
+        predict_dataset_dir = predict_dataset_ch,
+        hvg_method         = params.hvg_method,
+        run_name           = workflow.runName,
+        session_id         = workflow.sessionId,
+        configs_dir        = configs_dir_ch
     )
 
-    // seurat_v3 HVG optionally (in parallel)
-    if (params.hvg_method == 'seurat_v3') {
-        hvg_out = SEURAT_V3_HIGHLY_VARIABLE_GENES(dataset_ch, cfg_hvg_ch)
-        hvg_csv = hvg_out.hvg_csv
-    } else {
-        hvg_csv = params.hvg_method == 'seurat' ? onepass_out.seurat_hvg_csv : onepass_out.kotliar_hvg_csv
-    }
-
-    // INCREMENTAL_PCA_PLUS_PREDICTION waits for both, runs prediction on same machine
-    pca_out = INCREMENTAL_PCA_PLUS_PREDICTION(
-        fit_dataset_dir=dataset_ch,
-        predict_dataset_dir=dataset_ch,
-        onepass_csv=onepass_out.onepass_csv,
-        hvg_csv=hvg_csv,
-        base_fit_yaml=cfg_pca_ch,
-        base_predict_yaml=cfg_pca_predict_ch
+    // Dispatch the full pipeline to a single GCP GPU VM.
+    ONEPASS_HVG_INCREMENTAL_PCA_PLUS_PREDICTION(
+        fit_dataset_dir      = fit_dataset_ch,
+        predict_dataset_dir  = predict_dataset_ch,
+        hvg_method           = params.hvg_method,
+        onepass_config       = render_out.onepass_config,
+        pca_fit_config       = render_out.pca_fit_config,
+        pca_predict_config   = render_out.pca_predict_config,
+        seurat_v3_hvg_config = render_out.seurat_v3_hvg_config
     )
 }

@@ -19,15 +19,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames:
-{% for f in filenames %}
-        - {{ f }}
-{% endfor %}
-      limits:
-{% for l in limits %}
-        - {{ l }}
-{% endfor %}
-      max_cache_size: {{ max_cache_size }}
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
       indices_strict: true
 {% if batch_index_n %}
       obs_columns_to_validate:
@@ -39,13 +31,7 @@ data:
     x_ng:
       attr: X
       convert_fn: cellarium.ml.utilities.data.densify
-    var_names_g:
-{% if var_names_key %}
-      attr: var
-      key: {{ var_names_key }}
-{% else %}
-      attr: var_names
-{% endif %}
+{% include 'partials/_var_names_g.yaml.j2' %}
 {% if batch_index_n %}
     batch_index_n:
       attr: obs

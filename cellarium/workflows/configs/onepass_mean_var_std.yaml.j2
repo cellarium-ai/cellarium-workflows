@@ -7,25 +7,13 @@ trainer:
       broadcast_buffers: false
   max_epochs: 1
   logger: null
-  # Force all lightning outputs to a clean local folder for Nextflow to harvest
   default_root_dir: ./outputs
 model:
   transforms:
 {% if sparse_dataloader %}
     - cellarium.ml.transforms.Densify
 {% endif %}
-{% if use_pflogpf %}
-    - cellarium.ml.transforms.PFlogPF
-{% else %}
-{% if apply_normalize_total %}
-    - class_path: cellarium.ml.transforms.NormalizeTotal
-      init_args:
-        target_count: {{ target_count }}
-{% endif %}
-{% if apply_log1p %}
-    - cellarium.ml.transforms.Log1p
-{% endif %}
-{% endif %}
+{% include 'partials/_transforms_pflogpf.yaml.j2' %}
   model:
     class_path: cellarium.ml.models.OnePassMeanVarStd
     init_args:
@@ -35,15 +23,7 @@ data:
   dadc:
     class_path: cellarium.ml.data.DistributedAnnDataCollection
     init_args:
-      filenames:
-{% for f in filenames %}
-        - {{ f }}
-{% endfor %}
-      limits:
-{% for l in limits %}
-        - {{ l }}
-{% endfor %}
-      max_cache_size: {{ max_cache_size }}
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
       obs_columns_to_validate: []
   batch_keys:
     x_ng:
@@ -53,13 +33,7 @@ data:
 {% else %}
       convert_fn: cellarium.ml.utilities.data.densify
 {% endif %}
-    var_names_g:
-{% if var_names_key %}
-      attr: var
-      key: {{ var_names_key }}
-{% else %}
-      attr: var_names
-{% endif %}
+{% include 'partials/_var_names_g.yaml.j2' %}
 {% if total_mrna_umis_key %}
     total_mrna_umis_n:
       attr: obs
