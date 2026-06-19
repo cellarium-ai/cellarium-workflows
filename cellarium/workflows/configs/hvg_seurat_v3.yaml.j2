@@ -1,0 +1,46 @@
+seed_everything: true
+trainer:
+  accelerator: {{ accelerator }}
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    init_args:
+      broadcast_buffers: false
+  max_epochs: 2
+  default_root_dir: ./outputs
+model:
+  model:
+    class_path: cellarium.ml.models.HVGSeuratV3
+    init_args:
+      n_top_genes: {{ n_top_genes }}
+      use_batch_key: {{ 'true' if batch_index_n else 'false' }}
+      flavor: {{ flavor }}
+      output_path: ./outputs/seurat_v3_hvg_genes.csv
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
+      indices_strict: true
+{% if batch_index_n %}
+      obs_columns_to_validate:
+        - {{ batch_index_n }}
+{% else %}
+      obs_columns_to_validate: []
+{% endif %}
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+{% include 'partials/_var_names_g.yaml.j2' %}
+{% if batch_index_n %}
+    batch_index_n:
+      attr: obs
+      key: {{ batch_index_n }}
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
+{% endif %}
+  batch_size: {{ batch_size }}
+  iteration_strategy: cache_efficient
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
+  shuffle: true
+ckpt_path: null

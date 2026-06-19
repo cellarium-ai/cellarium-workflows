@@ -1,0 +1,47 @@
+seed_everything: true
+trainer:
+  accelerator: {{ accelerator }}
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: ./outputs
+model:
+  transforms:
+{% if sparse_dataloader %}
+    - cellarium.ml.transforms.Densify
+{% endif %}
+{% include 'partials/_transforms_pflogpf.yaml.j2' %}
+  model:
+    class_path: cellarium.ml.models.OnePassMeanVarStd
+    init_args:
+      algorithm: shifted_data
+      output_path: ./outputs/onepass_mean_var_std.csv
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
+      obs_columns_to_validate: []
+  batch_keys:
+    x_ng:
+      attr: X
+{% if sparse_dataloader %}
+      convert_fn: cellarium.ml.utilities.data.to_torch_sparse_csr
+{% else %}
+      convert_fn: cellarium.ml.utilities.data.densify
+{% endif %}
+{% include 'partials/_var_names_g.yaml.j2' %}
+{% if total_mrna_umis_key %}
+    total_mrna_umis_n:
+      attr: obs
+      key: {{ total_mrna_umis_key }}
+{% endif %}
+  batch_size: {{ batch_size }}
+  iteration_strategy: cache_efficient
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
+  shuffle: true
+ckpt_path: null

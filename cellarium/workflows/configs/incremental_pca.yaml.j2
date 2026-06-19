@@ -1,0 +1,42 @@
+seed_everything: true
+trainer:
+  accelerator: {{ accelerator }}
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: ./outputs
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: ./outputs/checkpoints/
+        save_last: true
+model:
+{% include 'partials/_filter_cpu_transforms.yaml.j2' %}
+  transforms:
+    - cellarium.ml.transforms.Densify
+{% include 'partials/_transforms_pflogpf.yaml.j2' %}
+{% include 'partials/_zscore_transform.yaml.j2' %}
+  model:
+    class_path: cellarium.ml.models.IncrementalPCA
+    init_args:
+      var_names_g: null
+      n_components: {{ n_components }}
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+{% include 'partials/_dadc_filenames_limits.yaml.j2' %}
+      obs_columns_to_validate: []
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.keep_sparse
+{% include 'partials/_var_names_g.yaml.j2' %}
+  batch_size: {{ batch_size }}
+  num_workers: {{ num_workers }}
+  prefetch_factor: {{ prefetch_factor if prefetch_factor is not none else 'null' }}
+  persistent_workers: false
+ckpt_path: null

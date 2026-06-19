@@ -1,0 +1,14 @@
+{% if filenames %}
+      filenames:
+{% for f in filenames %}
+        - {{ f }}
+{% endfor %}
+      limits:
+{% for l in limits %}
+        - {{ l }}
+{% endfor %}
+{% else %}
+      filenames: []
+      limits: []
+{% endif %}
+      max_cache_size: {{ max_cache_size }}
