@@ -25,6 +25,11 @@ params.target_count      = 10000
 params.apply_log1p     = true
 params.sparse_dataloader = true
 
+def VALID_HVG_METHODS = ['seurat_v3', 'seurat', 'kotliar']
+if (!(params.hvg_method in VALID_HVG_METHODS)) {
+    error "Invalid hvg_method '${params.hvg_method}'. Must be one of: ${VALID_HVG_METHODS.join(', ')}"
+}
+
 include { ONEPASS_MEAN_VAR_WITH_HVGS } from './modules/onepass_with_hvgs.nf'
 include { SEURAT_V3_HIGHLY_VARIABLE_GENES   } from './modules/seurat_v3_hvg.nf'
 include { INCREMENTAL_PCA_PLUS_PREDICTION } from './modules/pca_plus_predict.nf'
@@ -56,10 +61,11 @@ workflow {
 
     // INCREMENTAL_PCA_PLUS_PREDICTION waits for both, runs prediction on same machine
     pca_out = INCREMENTAL_PCA_PLUS_PREDICTION(
-        dataset_dir=dataset_ch,
+        fit_dataset_dir=dataset_ch,
+        predict_dataset_dir=dataset_ch,
         onepass_csv=onepass_out.onepass_csv,
         hvg_csv=hvg_csv,
-        base_yaml=cfg_pca_ch,
+        base_fit_yaml=cfg_pca_ch,
         base_predict_yaml=cfg_pca_predict_ch
     )
 }

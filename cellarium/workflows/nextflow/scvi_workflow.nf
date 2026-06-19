@@ -27,7 +27,7 @@ workflow {
 
     scvi_out = SCVI(
         dataset_ch,
-        params.hvg_csv,
+        Channel.value(file(params.hvg_csv)),
         cfg_scvi_ch
     )
 }

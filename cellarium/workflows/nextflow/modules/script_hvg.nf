@@ -14,7 +14,6 @@ process HIGHLY_VARIABLE_GENES {
     mkdir -p outputs
 
     maybe_pip_install.sh "${params.cellarium_ml_ref}"
-    _dataset_dir=\$(stage_dataset.sh "${params.gcp_download}" "${dataset_dir}")
 
     ${params.python3_bin} \$(which hvg_helper.py) ${method} ${n_top_genes} ${onepass_csv} --output hvgs.csv
     """

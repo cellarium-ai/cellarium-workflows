@@ -24,7 +24,7 @@ process SEURAT_V3_HIGHLY_VARIABLE_GENES {
         "accelerator=${params.accelerator}" \
         "batch_size=${params.batch_size}" \
         "n_top_genes=${params.n_top_genes}" \
-        "flavor=${params.flavor}" \
+        "flavor=${params.seurat_v3_flavor}" \
         "batch_index_n=${params.batch_index_n}" \
         "var_names_key=${params.var_names_key}" \
         "max_cache_size=${params.max_cache_size}"
