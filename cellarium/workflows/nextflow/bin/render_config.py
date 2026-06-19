@@ -195,11 +195,13 @@ def main():
     parser.add_argument(
         "--output", default="run_config.yaml",
         help="Output path for legacy positional-template form",
-    )    parser.add_argument(
+    )
+    parser.add_argument(
         "--patch", "-p", action="append", dest="patches",
         metavar="OUTPUT:INPUT",
         help="Patch INPUT (pre-rendered YAML) with dataset_dir scan and key overrides, write to OUTPUT (repeatable)",
-    )    args = parser.parse_args()
+    )
+    args = parser.parse_args()
 
     # ------------------------------------------------------------------
     # Distinguish legacy positional template from a stray key=value arg
