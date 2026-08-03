@@ -1,4 +1,0 @@
-google-cloud-aiplatform==1.68.0
-google-cloud-pipeline-components==2.17.0
-kfp==2.7.0
-click==8.1.7

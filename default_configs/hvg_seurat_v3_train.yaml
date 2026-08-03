@@ -1,0 +1,46 @@
+# lightning.pytorch==2.5.2
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    init_args:
+      broadcast_buffers: false
+  max_epochs: 2
+  default_root_dir: gs://cellarium-dev-central/workflows/20260519_scvi_seurat_v3_4k_batch_suspension
+model:
+  model:
+    class_path: cellarium.ml.models.HVGSeuratV3
+    init_args:
+      n_top_genes: 4000
+      use_batch_key: true
+      flavor: seurat_v3_paper
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes_fullschema/extract_files/extract_{000000..000050}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+      cache_size_strictly_enforced: true
+      indices_strict: true
+      obs_columns_to_validate:
+        - assay_suspension_type
+        # - donor_id_experiment
+        # - suspension_type
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var_names
+    batch_index_n:
+      attr: obs
+      key: assay_suspension_type
+      # key: donor_id_experiment
+      # key: suspension_type
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
+  batch_size: 5000
+  num_workers: 8
+  prefetch_factor: 2
+ckpt_path: null

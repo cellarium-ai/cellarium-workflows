@@ -1,0 +1,126 @@
+# lightning.pytorch==2.5.2
+seed_everything: true
+trainer:
+  accelerator: gpu
+  devices: 4
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+      find_unused_parameters: false
+  callbacks:
+  - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    init_args:
+      logging_interval: step
+  - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    init_args:
+      every_n_epochs: 1
+  max_epochs: 20
+  log_every_n_steps: 1000
+  val_check_interval: 10000
+  gradient_clip_algorithm: norm
+  gradient_clip_val: 1.0
+  inference_mode: false
+  default_root_dir: gs://cellarium-dev-central/workflows/20260514_human_scvi_glyco_validation_runs
+model:
+  cpu_transforms:
+    - class_path: cellarium.ml.transforms.Filter
+      init_args:
+        filter_list:
+          !FileLoader
+          file_path: gs://cellarium-dev-central/workflows/20260514_human_scvi_glyco/20260514_hvg_plus_glyco_genes.csv
+          loader_fn: pandas.read_csv
+          attr: "feature_id"
+          convert_fn: pandas.Series.to_list
+  model:
+    class_path: cellarium.ml.models.SingleCellVariationalInference
+    init_args:
+      var_names_g: null
+      n_batch: null
+      n_latent_batch: 64
+      batch_embedded: true
+      batch_representation_sampled: true
+      n_cats_per_cov: null
+      kl_warmup_epochs: null
+      kl_warmup_steps: 200_000
+      batch_kl_weight_max: 0.0
+      use_batch_norm: both
+
+      # if using a validation data set
+      cell_type_categories: null
+      ontology_distance_matrix:
+        !FileLoader
+          file_path: https://github.com/obophenotype/cell-ontology/releases/download/v2025-07-30/cl-basic.owl
+          loader_fn: cellarium.ml.utilities.data.compute_cl_distance_matrix
+      val_cell_type_classifier_reservoir_size: 200_000
+
+      encoder:
+        hidden_layers:
+        - class_path: torch.nn.Linear
+          init_args:
+            out_features: 512
+        # - class_path: torch.nn.Linear
+        #   init_args:
+        #     out_features: 512
+        final_layer:
+          class_path: torch.nn.Linear
+          init_args: {}
+      decoder:
+        hidden_layers:
+        - class_path: cellarium.ml.models.scvi.LinearWithBatch
+          init_args:
+            out_features: 512
+            label_to_bias_hidden_layers: []
+        # - class_path: cellarium.ml.models.scvi.LinearWithBatch
+        #   init_args:
+        #     out_features: 512
+        #     label_to_bias_hidden_layers: []
+        final_layer:
+          class_path: torch.nn.Linear
+          init_args: {}
+        final_additive_bias: false
+      n_latent: 64
+  optim_fn: torch.optim.AdamW
+  optim_kwargs:
+    lr: 1e-3
+  scheduler_fn: torch.optim.lr_scheduler.LinearLR
+  scheduler_kwargs:
+    start_factor: 0.01
+    total_iters: 100000
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/czi_human_primary_gr300genes_fullschema/extract_files/extract_{000000..001000}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 3
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+    batch_index_n:
+      attr: obs
+      key: assay_dataset_id_donor_id_suspension_type
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
+    # categorical_covariate_index_nd:
+    #   attr: obs
+    #   key:
+    #     - suspension_type
+    #     - assay
+    #   convert_fn: cellarium.ml.utilities.data.categories_to_codes
+    # only used for validation data
+    validation_cell_type_index_n:
+      attr: obs
+      key: cell_type_ontology_term_id
+      convert_fn: cellarium.ml.utilities.data.categories_to_codes
+  batch_size: 4096
+  shuffle: true
+  val_size: 0.02
+  num_workers: 2
+  prefetch_factor: 2
+  persistent_workers: false
+# ckpt_path: gs://cellarium-dev-central/workflows/20260401_human_scvi_our_hvg_copy_czi/lightning_logs/version_0/checkpoints/epoch=6-step=645771.ckpt

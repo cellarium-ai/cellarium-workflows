@@ -1,0 +1,56 @@
+# lightning.pytorch==2.4.0
+seed_everything: true
+trainer:
+  num_nodes: 1
+  max_epochs: 10
+model:
+  cpu_transforms:
+  - class_path: cellarium.ml.transforms.DivideByScale
+    init_args:
+      var_names_g:
+        !CheckpointLoader
+        file_path: gs://cellarium-dev-central/workflows/20260402_human_onepass/lightning_logs/version_0/checkpoints/epoch=1-step=37788.ckpt
+        attr: model.var_names_g
+      scale_g:
+        !CheckpointLoader
+        file_path: gs://cellarium-dev-central/workflows/20260402_human_onepass/lightning_logs/version_0/checkpoints/epoch=1-step=37788.ckpt
+        attr: model.scale_g
+      eps: 1e-4
+  - class_path: cellarium.ml.transforms.Filter
+    init_args:
+      filter_list:
+        !FileLoader
+        file_path: gs://cellarium-dev-central/workflows/20260331_czi_human_primary_20251108_gte300genes_hvg_seurat_v3/hvg_seurat_v3_output__hvg_only.csv
+        loader_fn: pandas.read_csv
+        attr: "feature_id"
+        convert_fn: pandas.Series.to_list
+  model:
+    class_path: cellarium.ml.models.OnlineNonNegativeMatrixFactorization
+    init_args:
+      var_names_g: null
+      k_values: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+      r: 100
+      algorithm: nmf_torch_hals
+      n_cells_total: 500_000
+  is_initialized: false
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/bican_freeze_1_full_extract/extract_files/extract_{000000..000050}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+  batch_size: 1024
+  shuffle: true
+  num_workers: 12
+  prefetch_factor: 4
+  persistent_workers: false
+ckpt_path: null

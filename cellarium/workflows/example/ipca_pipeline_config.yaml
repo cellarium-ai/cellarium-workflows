@@ -1,0 +1,8 @@
+ipca:
+  - tool: incremental_pca
+    subcommand: fit
+    config: gs://broad-bican-cellarium-file-system/curriculum/20240611_full/configs/20241202_ipca_config.yaml
+    machine_type: n1-standard-16
+    accelerator_type: NVIDIA_TESLA_T4
+    accelerator_count: 4
+    git_sha: main

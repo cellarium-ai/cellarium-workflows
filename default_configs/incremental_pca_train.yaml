@@ -1,0 +1,67 @@
+# lightning.pytorch==2.5.2
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: gs://cellarium-dev-central/workflows/20260410_cas_pca_oldgenelist
+model:
+  transforms:
+    - cellarium.ml.transforms.NormalizeTotal
+    - cellarium.ml.transforms.Log1p
+    - class_path: cellarium.ml.transforms.ZScore
+      init_args:
+        mean_g:
+          !CheckpointLoader
+          file_path: gs://cellarium-dev-central/workflows/20260403_cas_onepass/lightning_logs/version_0/checkpoints/epoch=0-step=17681.ckpt
+          attr: model.mean_g
+          convert_fn: torch.Tensor.cpu
+        std_g:
+          !CheckpointLoader
+          file_path: gs://cellarium-dev-central/workflows/20260403_cas_onepass/lightning_logs/version_0/checkpoints/epoch=0-step=17681.ckpt
+          attr: model.std_g
+          convert_fn: torch.Tensor.cpu
+        var_names_g:
+          !CheckpointLoader
+          file_path: gs://cellarium-dev-central/workflows/20260403_cas_onepass/lightning_logs/version_0/checkpoints/epoch=0-step=17681.ckpt
+          attr: model.var_names_g
+    - class_path: cellarium.ml.transforms.Filter
+      init_args:
+        filter_list:
+          !FileLoader
+          # file_path: gs://cellarium-dev-central/workflows/20260403_cas_hvg_seurat_v3_8k_batch_suspension/hvg_seurat_v3_output__hvg_only.csv
+          file_path: gs://cellarium-file-system/curriculum/human_10x_ebd_dfr_gt_3_extract/models/shared_meta/mean-var-std-highly-variable-genes-log1p-default-cutoffs.csv
+          loader_fn: pandas.read_csv
+          # attr: "feature_id"
+          attr: "original_feature_id"
+          convert_fn: pandas.Series.to_list
+        ordering: false
+  model:
+    class_path: cellarium.ml.models.IncrementalPCA
+    init_args:
+      var_names_g: null
+      n_components: 64
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000050}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 2
+      obs_columns_to_validate: []
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.densify
+    var_names_g:
+      attr: var
+      key: feature_id
+  batch_size: 5000
+  num_workers: 2  # limited by memory on n1-standard-16
+  prefetch_factor: 4
+  persistent_workers: false
+ckpt_path: null

@@ -1,0 +1,42 @@
+# lightning.pytorch==2.5.2
+seed_everything: true
+trainer:
+  strategy:
+    class_path: lightning.pytorch.strategies.DDPStrategy
+    dict_kwargs:
+      broadcast_buffers: false
+  max_epochs: 1
+  logger: null
+  default_root_dir: gs://cellarium-dev-central/workflows/20260403_cas_onepass
+model:
+  transforms:
+    - cellarium.ml.transforms.Densify
+    - class_path: cellarium.ml.transforms.NormalizeTotal
+      init_args:
+        target_count: 10_000
+    - cellarium.ml.transforms.Log1p
+  model:
+    class_path: cellarium.ml.models.OnePassMeanVarStd
+    init_args:
+      algorithm: shifted_data
+      output_path: onepass_output.csv
+data:
+  dadc:
+    class_path: cellarium.ml.data.DistributedAnnDataCollection
+    init_args:
+      filenames: gs://cellarium-nexus-file-system-3293a8/pipeline/data-extracts/20260403_cas_pca_model_10x/extract_files/extract_{000000..000050}.h5ad
+      shard_size: 10_000
+      last_shard_size: null
+      max_cache_size: 3
+  batch_keys:
+    x_ng:
+      attr: X
+      convert_fn: cellarium.ml.utilities.data.to_torch_sparse_csr
+    var_names_g:
+      attr: var
+      key: feature_id
+  batch_size: 4096
+  num_workers: 12
+  prefetch_factor: 2
+  persistent_workers: false
+ckpt_path: null

@@ -18,14 +18,43 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
-dynamic = ["dependencies", "optional-dependencies", "version", "readme"]
+dynamic = ["version", "readme"]
+dependencies = [
+    "google-cloud-aiplatform==1.68.0",
+    "google-cloud-pipeline-components==2.17.0",
+    "google-cloud-batch==0.17.36",
+    "kfp==2.7.0",
+    "click==8.1.7",
+    "pyjwt==2.9.0",
+    "gcsfs",
+    "h5py",
+    "ruamel.yaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "tox~=4.6",
+    "ruff",
+    "pytest~=7.3",
+]
+train_op = [
+    "gcsfs",
+    "tensorboard",
+    "psutil",
+    "ruamel.yaml",
+]
 
 [tool.setuptools.packages.find]
-include = ["cellarium.workflows"]
+include = ["cellarium*"]
+
+[tool.setuptools.package-data]
+"cellarium.workflows.scripts" = ["*.sh"]
+"cellarium.workflows.example" = ["*.yaml"]
+
+[project.scripts]
+cellarium-workflow = "cellarium.workflows.cli:cli"
 
 [tool.setuptools.dynamic]
-dependencies = { file = ["requirements/base.txt"] }
-optional-dependencies = { docs = { file = ["requirements/docs.txt"] }, test = { file = ["requirements/test.txt"] }, vis = { file = ["requirements/vis.txt"] } }
 readme = { file = ["README.md"], content-type = "text/markdown" }
 
 [project.urls]
