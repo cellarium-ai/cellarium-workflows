@@ -1,11 +1,8 @@
 """Data download and processing code for kubeflow components."""
 
 import os
-import concurrent.futures
-import copy
 import glob
 import gcsfs
-import re
 import subprocess
 from ruamel.yaml import YAML
 
@@ -30,16 +27,6 @@ else:
 
 os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 print(f" Created local data directory: {LOCAL_DATA_DIR}")
-
-
-def download_file(src):
-    """Download a single file from GCS to local directory."""
-    dst = os.path.join(LOCAL_DATA_DIR, os.path.basename(src))
-    with fs.open(src, "rb") as fsrc:
-        with open(dst, "wb") as fdst:
-            fdst.write(fsrc.read())
-    print(f"Copied {src} to {dst}")
-    return dst
 
 
 # Handle config file localization
@@ -78,32 +65,16 @@ print(f"Copying data from GCS {original_data_reference} to local disk {LOCAL_DAT
 
 sentinel_path = os.path.join(LOCAL_DATA_DIR, ".download_complete")
 if os.path.exists(sentinel_path):
-    print(
-        f" Sentinel found at {sentinel_path} — data already downloaded by pre-container runnable, skipping."
-    )
-    downloaded_files = glob.glob(os.path.join(LOCAL_DATA_DIR, "*.h5ad"))
+    print(f" Sentinel found at {sentinel_path} — data already downloaded, skipping.")
 else:
-    print(" No sentinel found — downloading via gcsfs fallback")
-    data_reference = copy.copy(original_data_reference)
-    if isinstance(data_reference, str):
-        brace = re.search(r"\{(\d+)\.\.(\d+)\}", data_reference)
-        if brace:
-            start_str, end_str = brace.groups()
-            start, end = int(start_str), int(end_str)
-            width = len(start_str)
-            base_path = data_reference[: brace.start()]
-            suffix = data_reference[brace.end() :]
-            data_reference = [
-                f"{base_path}{str(i).zfill(width)}{suffix}"
-                for i in range(start, end + 1)
-            ]
-        else:
-            data_reference = [data_reference]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
-        futures = [executor.submit(download_file, src) for src in data_reference]
-        downloaded_files = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+    print(f" Downloading data via gsutil: {original_data_reference} -> {LOCAL_DATA_DIR}/")
+    subprocess.run(
+        f"gsutil -m cp {original_data_reference} {LOCAL_DATA_DIR}/",
+        shell=True,
+        executable="/bin/bash",
+        check=True,
+    )
+    open(sentinel_path, "w").close()
 
 print("Listing local .h5ad files (at most 10):")
 h5ad_files = glob.glob(os.path.join(LOCAL_DATA_DIR, "*.h5ad"))

@@ -1,7 +1,6 @@
 """Submit a single component cellarium-ml job to Google Cloud Batch."""
 
 import re
-import textwrap
 import uuid
 from datetime import datetime
 
@@ -17,7 +16,6 @@ from .shared_components import (
     get_machine_type_resources,
     extract_output_gcs_bucket_from_config,
     extract_data_gcs_bucket_from_config,
-    extract_data_gcs_glob_from_config,
     assert_gcs_bucket_accessible_as_service_account,
     assert_data_first_file_exists,
     extract_ckpt_path_from_config,
@@ -36,7 +34,6 @@ def create_batch_job_spec(
     git_sha: str,
     copy_data_to_local_disk: bool,
     base_image: str,
-    data_gcs_glob_uri: str = "",
     machine_type: str = "n1-standard-4",
     accelerator_type: str = "nvidia-tesla-t4",
     accelerator_count: int = 1,
@@ -93,44 +90,13 @@ def create_batch_job_spec(
         "GIT_SHA": git_sha,
         "COPY_DATA_TO_LOCAL_DISK": str(copy_data_to_local_disk).lower(),
         "CELLARIUM_CAPTURE_LOGS": str(capture_logs_to_gcs).lower(),
+        "CLOUDSDK_PYTHON": "/usr/bin/python3",
     }
 
     # Define the task specification
     task_spec = batch_v1.TaskSpec()
 
-    # Pre-container Script runnable: runs directly on the VM host (not in Docker),
-    # so gcloud uses the host's Python runtime with no container conflicts.
-    # Downloads all data shards to the local SSD before the container starts,
-    # then writes a sentinel file so data_download.py can skip the download step.
     task_spec_runnables = []
-    if copy_data_to_local_disk and data_gcs_glob_uri:
-        local_data_dir = (
-            "/mnt/disks/local-ssd/training_data"
-            if local_ssd_size_gb > 0
-            else "/tmp/training_data"
-        )
-        sentinel_path = local_data_dir + "/.download_complete"
-        data_download_script = textwrap.dedent(f"""
-            #!/bin/bash
-            set -e
-            mkdir -p "{local_data_dir}"
-            echo " Pre-container data download starting..."
-            echo " Source: {data_gcs_glob_uri}"
-            echo " Dest:   {local_data_dir}/"
-            df -h "{local_data_dir}" || true
-            gsutil -m cp {data_gcs_glob_uri} "{local_data_dir}/"
-            touch "{sentinel_path}"
-            echo " Download complete. Sentinel written to {sentinel_path}"
-            df -h "{local_data_dir}"
-        """).strip()
-
-        pre_runnable = batch_v1.Runnable()
-        pre_runnable.script = batch_v1.Runnable.Script()
-        pre_runnable.script.text = data_download_script
-        task_spec_runnables.append(pre_runnable)
-        print(
-            f" Added pre-container download runnable: gsutil -m cp {data_gcs_glob_uri} -> {local_data_dir}/"
-        )
 
     # Resolve machine resources up front so shm-size can be derived from total RAM.
     cpu_milli, memory_mib = get_machine_type_resources(machine_type)
@@ -525,10 +491,6 @@ def submit_batch_component(
                     f"Allowed tool names:\n{cli_tool_names}"
                 )
 
-    data_gcs_glob_uri = (
-        extract_data_gcs_glob_from_config(config) if copy_data_to_local_disk else ""
-    )
-
     # Handle GPU settings
     if accelerator_count == 0:
         accelerator_type = ""
@@ -560,7 +522,6 @@ def submit_batch_component(
         git_sha=git_sha,
         copy_data_to_local_disk=copy_data_to_local_disk,
         base_image=base_image,
-        data_gcs_glob_uri=data_gcs_glob_uri,
         machine_type=machine_type,
         accelerator_type=accelerator_type,
         accelerator_count=accelerator_count,

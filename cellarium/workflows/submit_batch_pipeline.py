@@ -103,6 +103,7 @@ def create_batch_pipeline_jobs(
             "GIT_SHA": component_def.get("git_sha", git_sha),
             "COPY_DATA_TO_LOCAL_DISK": str(copy_data_to_local_disk).lower(),
             "CELLARIUM_CAPTURE_LOGS": str(capture_logs_to_gcs).lower(),
+            "CLOUDSDK_PYTHON": "/usr/bin/python3",
         }
 
         # Define the task specification
@@ -247,12 +248,13 @@ def create_batch_pipeline_jobs(
             instance_policy_or_template.install_gpu_drivers = True
 
         # Add Local SSD configuration
-        attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
-        attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
-        attached_disk.new_disk.type_ = "local-ssd"
-        attached_disk.new_disk.size_gb = local_ssd_size_gb
-        attached_disk.device_name = "local-ssd"
-        instance_policy.disks = [attached_disk]
+        if local_ssd_size_gb > 0:
+            attached_disk = batch_v1.AllocationPolicy.AttachedDisk()
+            attached_disk.new_disk = batch_v1.AllocationPolicy.Disk()
+            attached_disk.new_disk.type_ = "local-ssd"
+            attached_disk.new_disk.size_gb = local_ssd_size_gb
+            attached_disk.device_name = "local-ssd"
+            instance_policy.disks = [attached_disk]
 
         allocation_policy.instances = [instance_policy_or_template]
 
